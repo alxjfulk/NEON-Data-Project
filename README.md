@@ -1,0 +1,2 @@
+# NEON-Data-Project
+Given our data, what predictions can we make on tick expansion? The variables that we can include into the analysis are: individual counts of ticks (individualCount), tick age (sexOrAge), tick species (scientificName), sampling effort (totalSampledArea), individual counts of mammals (individualCount), mammal species (scientificName), elevation (elevation), latitude (decimalLatitude), longitude (decimalLongitude), temperture (tempTripleMean), precipitation (priPrecipBulk), presence/absence of burn (methodTypeChoice), and burn severity (fireSeverity).
