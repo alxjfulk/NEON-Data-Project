@@ -42,7 +42,7 @@ df1$totalSampledArea <- df2[match(paste(df1$plotID),paste(df2$plotID)),"totalSam
 df1$sexOrAge <-replace(df1$sexOrAge,df1$sexOrAge=="Male","Adult")
 df1$sexOrAge <-replace(df1$sexOrAge,df1$sexOrAge=="Female","Adult")
 #reformat collectDate column to make the aggregtion easier 
-df1$collectDate <- format(as.POSIXct(df1$collectDate,format='%Y-%m-%d %H:%M:%S'),format='%Y-%m-%d')
+df1$collectDate <- format(as.POSIXct(df1$collectDate,format='%Y-%m-%d %H:%M:%S'),format='%Y-%m-%d %H:%M:%S')
 
 
 # View(df1)
@@ -262,7 +262,11 @@ df1$totalSampledArea <- df2[match(paste(df1$plotID),paste(df2$plotID)),"totalSam
 df1$sexOrAge <-replace(df1$sexOrAge,df1$sexOrAge=="Male","Adult")
 df1$sexOrAge <-replace(df1$sexOrAge,df1$sexOrAge=="Female","Adult")
 #reformat collectDate column to make the aggregtion easier 
-df1$collectDate <- format(as.POSIXct(df1$collectDate,format='%Y-%m-%d %H:%M:%S'),format='%Y-%m-%d')
+#IDEALLY we would include the hour, minute, and second of collection however we cannot 
+#df1$collectDate <- format(as.POSIXct(df1$collectDate,format='%Y-%m-%d %H:%M:%S'),format='%Y-%m-%d %H:%M:%S')
+df1$collectDate <- format(as.POSIXct(df1$collectDate,format='%Y-%m-%d %H:%M:%S'),format='%Y-%m-%d %H:%M:%S')
+df2$collectDate <- format(as.POSIXct(df2$collectDate,format='%Y-%m-%d %H:%M:%S'),format='%Y-%m-%d %H:%M:%S')
+
 
 #REMOVE TICK COUNTS WHERE SPECIES COULD NOT BE DETERMINED
 df1 <- df1[df1$taxonRank == 'species',]
@@ -293,7 +297,7 @@ df2zeros_trimmed <- subset(df2zeros, select=-c(domainID,siteID,plotType,geodetic
 # View(df2zeros_trimmed)
 
 #we have removed unneeded columns, now we need to combine the dataframes (https://stackoverflow.com/questions/53004125/concatenate-multiple-data-frames-with-different-columns-in-r)
-df1_trimmed$collectDate <- as.Date(df1_trimmed$collectDate)
+#df1_trimmed$collectDate <- as.Date(df1_trimmed$collectDate)
 mergetest <- dplyr::bind_rows(df1_trimmed,df2zeros_trimmed)
 #need to remove ".tck" from the namedLocation so that things line up when combining with the fire data
 mergetest$namedLocation <- gsub(".tck","",as.character(mergetest$namedLocation))
