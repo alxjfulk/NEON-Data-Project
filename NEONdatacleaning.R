@@ -260,12 +260,12 @@ df2 <- read.csv("C:/Users/bigfo/OneDrive/Desktop/school/neon data/tick site data
 tickdata <- loadByProduct(dpID = 'DP1.10093.001')
 
 #see what is contained in the data
-View(tickdata$variables_10093)
+#View(tickdata$variables_10093)
 
 #seems like we may need nlcdClass data from the tck_fielddata, but nothing else 
 #since the other data is contained within tck_taxonomyProcessed
-View(tickdata$tck_taxonomyProcessed)
-View(tickdata$tck_fielddata)
+#View(tickdata$tck_taxonomyProcessed)
+#View(tickdata$tck_fielddata)
 
 #let's try a different approach taken from this stackoverflow link: https://stackoverflow.com/questions/64992027/adding-column-to-a-dataframe-in-r-based-on-matching-conditions-in-another-datafr
 df1 <- tickdata$tck_taxonomyProcessed
@@ -299,7 +299,22 @@ df1 <- df1[df1$taxonRank == 'species',]
 
 #now we need to remove the entries from the field data that had ticks collected so that we avoid duplicate data when merging
 df2zeros <- df2[(df2$adultCount == 0 | is.na(df2$adultCount)) & (df2$nymphCount == 0 | is.na(df2$nymphCount)) & (df2$larvaCount == 0 | is.na(df2$larvaCount)) & !is.na(df2$totalSampledArea),]
-# View(df2zeros)
+#The above is correct, however, we also need to convert those sampling instances that collected only other species to absence data for a americanum, thus we must edit df1
+#start by splitting into a americanum collections and not (i.e. all the other species)
+df1americanum <- df1[df1$scientificName == 'Amblyomma americanum',]
+df1not <- df1[df1$scientificName != 'Amblyomma americanum',]
+#Now we need to compare the dates and plots of the two dataframes and remove those that match from the "not" dataframe. 
+#This allows us to include only those sampling events where they sampled and collected only ticks OTHER than a americanum. (https://stackoverflow.com/questions/72546014/remove-rows-that-do-not-match-common-dates-from-a-separate-data-frame)
+df1not <- df1not %>% filter((!df1not$collectDate %in% df1americanum$collectDate) & (!df1not$plotID %in% df1americanum$plotID))
+#the above line is a bit tricky, we are collecting those dates where sampling occurred, but only ticks other than a americanum were collected,thus we remove those instances (dates) where both a americanum and other species were collected
+
+#now we want to convert all of the indiivudal counts in the "not" dataframe to zeros to indicate absence of a americanum
+df1not$individualCount <- 0
+
+#Finally, we will recombine both dataframes
+df1 <- dplyr::bind_rows(df1americanum, df1not)
+# View(df1americanum)
+# View(df1not)
 #now we need to remove unneeded columns before merging the two dataframes (https://stackoverflow.com/questions/5234117/how-to-drop-columns-by-name-in-a-data-frame)
 df1_trimmed <- subset(df1, select=-c(identifiedDate,sampleID,subsampleID,acceptedTaxonID,taxonRank,family,subfamily,tribe,
                                      subtribe,genus,subgenus,specificEpithet,infraspecificEpithet,identificationQualifier,identificationReferences,
@@ -307,7 +322,7 @@ df1_trimmed <- subset(df1, select=-c(identifiedDate,sampleID,subsampleID,accepte
                                      archiveFacilityID,deprecatedVialID,identifiedBy,laboratoryName,remarks,publicationDate,release))
 # View(df1_trimmed)
 #let's see what an aggregation will give us
-View(aggregate(individualCount~sexOrAge + collectDate + scientificName + namedLocation + plotID + nlcdClass + elevation + decimalLatitude + decimalLongitude + totalSampledArea,data=subset(df1_trimmed,sexOrAge == c('Adult')),sum))
+#View(aggregate(individualCount~sexOrAge + collectDate + scientificName + namedLocation + plotID + nlcdClass + elevation + decimalLatitude + decimalLongitude + totalSampledArea,data=subset(df1_trimmed,sexOrAge == c('Adult')),sum))
 #looks right! now we need to remove the rows that have adult in df1_trimmed and then add the aggregated data back to our trimmed dataframe
 adultcount <- aggregate(individualCount~sexOrAge + collectDate + scientificName + namedLocation + plotID + nlcdClass + elevation + decimalLatitude + decimalLongitude + totalSampledArea,data=subset(df1_trimmed,sexOrAge == c('Adult')),sum)
 df1_trimmed <- df1_trimmed[df1_trimmed$sexOrAge != 'Adult',]
@@ -328,7 +343,7 @@ mergetest$namedLocation <- gsub(".tck","",as.character(mergetest$namedLocation))
 View(mergetest)
 
 #save to csv
-# write.csv(mergetest,"D:/NEONexample/NEONtickdatacleaned.csv",row.names = FALSE)
+write.csv(mergetest,"C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/Tick NEON Data Cleaned/NEON_AAmericanum_tickdatacleaned.csv",row.names = FALSE)
 
 #*FIRE DATA ----
 #for combining the downloaded data into tables:
