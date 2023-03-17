@@ -221,6 +221,30 @@ write.csv(finalmerge,"D:/NEONexample/full_allcounts.csv",row.names = FALSE)
 
 
 
+# *PRECIPITATION DATA ----
+#for combining the downloaded data into tables:
+stackByTable(filepath="/Users/a426f262/Downloads/Directly Downloaded Data/NEON_precipitation.zip")
+#load the stacked data:
+tempdataset <- read.csv("C:/Users/bigfo/OneDrive/Desktop/school/neon data/trip asp air temp data/NEON_site-mgt-and-event-report/stackedFiles/wss_daily_temp.csv")
+
+
+
+
+
+
+
+
+
+
+#order by site, then date
+finalmerge <- mergetest3[order(mergetest3$namedLocation,mergetest3$collectDate),]
+View(finalmerge)
+# ####TEMP DATASET THAT I FOUND###
+# tempdata <- loadByProduct(dpID = 'DP1.00098.001', site = 'KONZ')
+# View(tempdata$RH_30min)
+
+write.csv(finalmerge,"D:/NEONexample/full_allcounts.csv",row.names = FALSE)
+
 ####CLEANING DATA ONLY KNOWN SPECIES####
 #*TICK DATA ----
 #for combining the downloaded data into tables:
@@ -440,3 +464,27 @@ View(finalmerge)
 # tempdata <- loadByProduct(dpID = 'DP1.00098.001', site = 'KONZ')
 # View(tempdata$RH_30min)
 write.csv(finalmerge,"D:/NEONexample/full_only species.csv",row.names = FALSE)
+
+# *PRECIPITATION DATA ----
+#for combining the downloaded data into tables:
+stackByTable(filepath="/Users/a426f262/Downloads/Directly Downloaded Data/NEON_precipitation.zip")
+#load the stacked data:
+tempdataset <- read.csv("C:/Users/bigfo/OneDrive/Desktop/school/neon data/trip asp air temp data/NEON_site-mgt-and-event-report/stackedFiles/wss_daily_temp.csv")
+
+
+
+
+
+
+
+
+
+
+#order by site, then date
+finalmerge <- mergetest3[order(mergetest3$namedLocation,mergetest3$collectDate),]
+View(finalmerge)
+# ####TEMP DATASET THAT I FOUND###
+# tempdata <- loadByProduct(dpID = 'DP1.00098.001', site = 'KONZ')
+# View(tempdata$RH_30min)
+
+write.csv(finalmerge,"D:/NEONexample/full_allcounts.csv",row.names = FALSE)
