@@ -334,14 +334,16 @@ df2zeros_trimmed <- subset(df2zeros, select=-c(domainID,siteID,plotType,geodetic
                                                larvaCount,sampleCondition,samplingProtocolVersion,measuredBy,remarks,
                                                publicationDate,release))
 # View(df2zeros_trimmed)
-
+#unique(df1$scientificName)
 #we have removed unneeded columns, now we need to combine the dataframes (https://stackoverflow.com/questions/53004125/concatenate-multiple-data-frames-with-different-columns-in-r)
 #df1_trimmed$collectDate <- as.Date(df1_trimmed$collectDate)
 mergetest <- dplyr::bind_rows(df1_trimmed,df2zeros_trimmed)
 #need to remove ".tck" from the namedLocation so that things line up when combining with the fire data
 mergetest$namedLocation <- gsub(".tck","",as.character(mergetest$namedLocation))
-View(mergetest)
+#View(mergetest)
 
+#somehow some rows of only NAs has been included. Let's remove that:
+mergetest <- mergetest[rowSums(is.na(mergetest)) != ncol(mergetest), ]
 #save to csv
 write.csv(mergetest,"C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/Tick NEON Data Cleaned/NEON_AAmericanum_tickdatacleaned.csv",row.names = FALSE)
 
@@ -393,11 +395,14 @@ sdf_trimmed <- subset(sdf_fire_separate_tick, select=-c(domainID,siteID,namedLoc
 View(sdf_trimmed)
 
 #change locationID to namedLocation and startDate to so that they match with the other dataframes
-colnames(sdf_trimmed)[2] <- "namedLocation"
-colnames(sdf_trimmed)[3] <- "collectDate"
+colnames(sdf_trimmed)[1] <- "uidFire"
+colnames(sdf_trimmed)[2] <- "locationIDFire"
+colnames(sdf_trimmed)[3] <- "startDateFire"
+colnames(sdf_trimmed)[4] <- "endDateFire"
+colnames(sdf_trimmed)[5] <- "methodTypeChoiceFire"
 
 #remove spaces in new namedLocation so we can order later
-sdf_trimmed$namedLocation <- gsub(" ", "", sdf_trimmed$namedLocation, fixed = TRUE)
+sdf_trimmed$locationIDFire <- gsub(" ", "", sdf_trimmed$locationIDFire, fixed = TRUE)
 
 #save to csv
 # write.csv(sdf_trimmed,"D:/NEONexample/NEONfiredatacleaned.csv",row.names = FALSE)
