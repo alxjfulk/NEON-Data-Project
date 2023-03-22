@@ -406,6 +406,53 @@ sdf_trimmed$locationIDFire <- gsub(" ", "", sdf_trimmed$locationIDFire, fixed = 
 
 #save to csv
 # write.csv(sdf_trimmed,"D:/NEONexample/NEONfiredatacleaned.csv",row.names = FALSE)
+#We need to merge these data with the tick data. We would like to create a new column called 'daysSinceLastBurn' which contains the number of days since the last
+#controlled burn occurred on the plot. to do this, we first need to isolate the controlled fires for each tick plot and calculate the number of days 
+#using something like diffdates being careful to only include those controlled burns that occur BEFORE the collection date of interest in that calculation.
+#once we have that we would like to copy the corresponding burn information (uidFire, locationIDFire, startDateFire, endDatefire, methodTypeChoiceFire, fireSeverity) over, creating new columns in the tick data.
+
+
+# Create sample data
+date1 <- as.Date(c("2022-01-01", "2022-02-01", "2022-03-01"))
+date2 <- as.Date(c("2022-01-15", "2022-01-20", "2022-02-03", "2022-03-05"))
+
+# Initialize empty vectors to store the closest dates and their differences
+closest_dates <- vector()
+diff_dates <- vector()
+
+# Loop through each date in date1
+for (d1 in date1) {
+  # Subset date2 to only include dates before d1
+  date2_subset <- date2[date2 < d1]
+  
+  # If there are no dates in date2_subset, add NA to the closest_dates and diff_dates vectors
+  if (length(date2_subset) == 0) {
+    closest_dates <- c(closest_dates, NA)
+    diff_dates <- c(diff_dates, NA)
+  } else {
+    # Calculate the differences between d1 and each date in date2_subset
+    date_diffs <- abs(d1 - date2_subset)
+    
+    # Find the index of the date in date2_subset with the smallest difference
+    closest_index <- which.min(date_diffs)
+    
+    # Add the closest date to the closest_dates vector
+    closest_dates <- c(closest_dates, date2_subset[closest_index])
+    
+    # Calculate the difference between d1 and the closest date, and add it to the diff_dates vector
+    diff_dates <- c(diff_dates, date_diffs[closest_index])
+  }
+}
+
+# Create a data frame with date1, closest_dates, and diff_dates as columns
+output_df <- data.frame(date1, closest_dates, diff_dates)
+
+# Print the output data frame
+output_df
+
+
+
+
 
 mergetest1 <- dplyr::bind_rows(mergetest,sdf_trimmed)
 View(mergetest1)
