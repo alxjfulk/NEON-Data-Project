@@ -338,6 +338,8 @@ df2zeros_trimmed <- subset(df2zeros, select=-c(domainID,siteID,plotType,geodetic
 #we have removed unneeded columns, now we need to combine the dataframes (https://stackoverflow.com/questions/53004125/concatenate-multiple-data-frames-with-different-columns-in-r)
 #df1_trimmed$collectDate <- as.Date(df1_trimmed$collectDate)
 mergetest <- dplyr::bind_rows(df1_trimmed,df2zeros_trimmed)
+#remove spaces in new namedLocation so we can order later
+mergetest$namedLocation <- gsub(" ", "", mergetest$namedLocation, fixed = TRUE)
 #need to remove ".tck" from the namedLocation so that things line up when combining with the fire data
 mergetest$namedLocation <- gsub(".tck","",as.character(mergetest$namedLocation))
 #View(mergetest)
@@ -392,7 +394,8 @@ sdf_trimmed <- subset(sdf_fire_separate_tick, select=-c(domainID,siteID,namedLoc
                                                         eventType,name,scientificName,otherScientificName,biomassRemoval,
                                                         minQuantity,maxQuantity,quantityUnit,reporterType,remarks,recordedBy,
                                                         dataQF,publicationDate,release))
-View(sdf_trimmed)
+
+#View(sdf_trimmed)
 
 #change locationID to namedLocation and startDate to so that they match with the other dataframes
 colnames(sdf_trimmed)[1] <- "uidFire"
@@ -401,57 +404,168 @@ colnames(sdf_trimmed)[3] <- "startDateFire"
 colnames(sdf_trimmed)[4] <- "endDateFire"
 colnames(sdf_trimmed)[5] <- "methodTypeChoiceFire"
 
-#remove spaces in new namedLocation so we can order later
+#convert to dataframe and remove spaces in new namedLocation so we can order later
+sdf_trimmed <- data.frame(sdf_trimmed)
 sdf_trimmed$locationIDFire <- gsub(" ", "", sdf_trimmed$locationIDFire, fixed = TRUE)
-
+write.csv(mergetest_save,"C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/Fire Data Cleaned/AAmericanum_cleaned.csv",row.names = FALSE)
 #save to csv
 # write.csv(sdf_trimmed,"D:/NEONexample/NEONfiredatacleaned.csv",row.names = FALSE)
 #We need to merge these data with the tick data. We would like to create a new column called 'daysSinceLastBurn' which contains the number of days since the last
 #controlled burn occurred on the plot. to do this, we first need to isolate the controlled fires for each tick plot and calculate the number of days 
 #using something like diffdates being careful to only include those controlled burns that occur BEFORE the collection date of interest in that calculation.
 #once we have that we would like to copy the corresponding burn information (uidFire, locationIDFire, startDateFire, endDatefire, methodTypeChoiceFire, fireSeverity) over, creating new columns in the tick data.
+# # Create sample data for testing
+# date1 <- as.Date(c("2022-01-01", "2022-02-01", "2022-03-01"))
+# date2 <- as.Date(c("2022-01-15", "2022-01-20", "2022-02-03", "2022-03-05"))
 
+mergetest <- mergetest[order(mergetest$namedLocation,mergetest$collectDate),]
+#need to remove ".tck" from the namedLocation so that things line up when combining with the fire data
+mergetest$namedLocation <- gsub(".tickPlot","",as.character(mergetest$namedLocation))
+sdf_trimmed$locationIDFire <- gsub(".tickPlot","",as.character(sdf_trimmed$locationIDFire))
+mergetest_save <- mergetest
+sdf_trimmed_save <- sdf_trimmed
+mergetest$collectDate <- as.Date(mergetest$collectDate)
+sdf_trimmed$endDateFire <- as.Date(sdf_trimmed$endDateFire)
+#Let's try joining the two based on multiple conditions instead of doing everything together. We can calculate days since last burn easily after joining
 
-# Create sample data
-date1 <- as.Date(c("2022-01-01", "2022-02-01", "2022-03-01"))
-date2 <- as.Date(c("2022-01-15", "2022-01-20", "2022-02-03", "2022-03-05"))
+library(sqldf)
+x = sqldf("
+SELECT d1.*, d2.*
+  FROM mergetest d1
+LEFT JOIN (
+  SELECT t1.locationIDFire, MAX(t1.endDateFire) AS maxEndDate
+  FROM sdf_trimmed t1
+  WHERE t1.endDateFire < (
+    SELECT collectDate FROM mergetest t2
+    WHERE t2.namedLocation = t1.locationIDFire
+  )
+  GROUP BY t1.locationIDFire
+) maxDates
+ON d1.namedLocation = maxDates.locationIDFire AND maxDates.maxEndDate = (
+  SELECT MAX(t3.endDateFire)
+  FROM sdf_trimmed t3
+  WHERE t3.locationIDFire = d1.namedLocation AND t3.endDateFire < d1.collectDate
+)
+LEFT JOIN sdf_trimmed d2
+ON maxDates.locationIDFire = d2.locationIDFire AND maxDates.maxEndDate = d2.endDateFire
+WHERE d2.endDateFire < d1.collectDate OR d2.endDateFire IS NULL
+")
+library(sqldf)
+x = sqldf("
+select t1.*,
+(select t2.endDateFire
+ from sdf_trimmed t2
+ where t2.locationIDFire = t1.namedLocation and t2.endDateFire <= t1.collectDate
+ order by t2.endDateFire desc
+ limit 1 
+) as endDateFire
+from mergetest t1 full join sdf_trimmed t2;
+")
+library(dplyr)
+data %>%
+  group_by(ID) %>%
+  mutate(MAX = TIME[which.max(VALUE)])
 
+x = sqldf("
+SELECT d1.*, d2.*
+FROM mergetest d1
+LEFT JOIN (
+    SELECT locationIDFire, MAX(endDateFire) AS maxEndDate
+    FROM sdf_trimmed
+    WHERE endDateFire < (SELECT collectDate FROM mergetest WHERE namedLocation = locationIDFire)
+    GROUP BY locationIDFire
+) maxDates
+ON d1.namedLocation = maxDates.locationIDFire
+LEFT JOIN sdf_trimmed d2
+ON maxDates.locationIDFire = d2.locationIDFire AND maxDates.maxEndDate = d2.endDateFire
+WHERE d2.endDateFire < d1.collectDate OR d2.endDateFire IS NULL
+")
+x = sqldf("
+  SELECT *
+  FROM mergetest d1 FULL JOIN sdf_trimmed d2
+  ON d1.namedLocation = d2.locationIDFire
+  WHERE endDateFire < ( SELECT collectDate FROM mergetest )
+")
 # Initialize empty vectors to store the closest dates and their differences
-closest_dates <- vector()
+closest_dates <- as.Date(vector())
 diff_dates <- vector()
+corresponding_dates <- as.Date(vector())
 
-# Loop through each date in date1
-for (d1 in date1) {
-  # Subset date2 to only include dates before d1
-  date2_subset <- date2[date2 < d1]
-  
-  # If there are no dates in date2_subset, add NA to the closest_dates and diff_dates vectors
-  if (length(date2_subset) == 0) {
-    closest_dates <- c(closest_dates, NA)
-    diff_dates <- c(diff_dates, NA)
-  } else {
-    # Calculate the differences between d1 and each date in date2_subset
-    date_diffs <- abs(d1 - date2_subset)
-    
-    # Find the index of the date in date2_subset with the smallest difference
-    closest_index <- which.min(date_diffs)
-    
-    # Add the closest date to the closest_dates vector
-    closest_dates <- c(closest_dates, date2_subset[closest_index])
-    
-    # Calculate the difference between d1 and the closest date, and add it to the diff_dates vector
-    diff_dates <- c(diff_dates, date_diffs[closest_index])
+# Loop through each date in date1, specifying a list to preserve the Date format. Further, only include those days that share plotIDs indicating that the fire occurred on that tick plot. 
+# for (i in unique(mergetest$namedLocation) == i) {
+#   View(mergetest) View(sdf_trimmed)
+#for (i in unique(sdf_trimmed$locationIDFire)) {
+  for (d1 in as.list(as.Date(mergetest$collectDate, format = '%Y-%m-%d'))) {
+    # Subset date2 to only include dates before d1. Further, only include those days that share plotIDs indicating that the fire occurred on that tick plot. 
+    date2_subset <- sdf_trimmed$endDateFire[(sdf_trimmed$locationIDFire %in% mergetest$namedLocation) & (as.list(as.Date(sdf_trimmed$endDateFire)) < as.Date(d1))]
+    # If there are no dates in date2_subset, add NA to the closest_dates and diff_dates vectors
+    if (length(date2_subset) == 0) {
+      closest_dates <- c(closest_dates, NA)
+      diff_dates <- c(diff_dates, NA)
+      corresponding_dates <- c(corresponding_dates, NA)
+    } else {
+      # Calculate the differences between d1 and each date in date2_subset
+      date_diffs <- as.numeric(abs(as.Date(d1) - as.Date(date2_subset)))
+      
+      # Find the index of the date in date2_subset with the smallest difference
+      closest_index <- which.min(date_diffs)
+      
+      # Add the closest date to the closest_dates vector
+      closest_dates <- c(as.Date(closest_dates), as.Date(date2_subset[closest_index]))
+      # Calculate the difference between d1 and the closest date, and add it to the diff_dates vector
+      diff_dates <- c(diff_dates, date_diffs[closest_index])
+      
+      # Add the corresponding date from date2 to the corresponding_dates vector
+      corresponding_dates <- c(corresponding_dates, as.Date(date2_subset[closest_index]))
+    }
   }
-}
-
-# Create a data frame with date1, closest_dates, and diff_dates as columns
-output_df <- data.frame(date1, closest_dates, diff_dates)
+#}
+# Create a data frame with date1, closest_dates, diff_dates, and corresponding_dates as columns
+output_df <- data.frame(mergetest, closest_dates, diff_dates)
 
 # Print the output data frame
-output_df
+View(output_df)
 
-
-
+# # # Create sample data for testing
+# # date1 <- as.Date(c("2022-01-01", "2022-02-01", "2022-03-01"))
+# # date2 <- as.Date(c("2022-01-15", "2022-01-20", "2022-02-03", "2022-03-05"))
+# 
+# # Initialize empty vectors to store the closest dates and their differences
+# closest_dates <- as.Date(vector())
+# diff_dates <- vector()
+# corresponding_dates <- as.Date(vector())
+# 
+# # Loop through each date in date1, specifying a list to preserve the Date format
+# for (d1 in as.list(date1)) {
+#   # Subset date2 to only include dates before d1
+#   date2_subset <- date2[as.Date(date2) < as.Date(d1)]
+#   # If there are no dates in date2_subset, add NA to the closest_dates and diff_dates vectors
+#   if (length(date2_subset) == 0) {
+#     closest_dates <- c(closest_dates, NA)
+#     diff_dates <- c(diff_dates, NA)
+#     corresponding_dates <- c(corresponding_dates, NA)
+#   } else {
+#     # Calculate the differences between d1 and each date in date2_subset
+#     date_diffs <- abs(as.Date(d1) - as.Date(date2_subset))
+#     
+#     # Find the index of the date in date2_subset with the smallest difference
+#     closest_index <- which.min(date_diffs)
+#     
+#     # Add the closest date to the closest_dates vector
+#     closest_dates <- c(as.Date(closest_dates), date2_subset[closest_index])
+#     # Calculate the difference between d1 and the closest date, and add it to the diff_dates vector
+#     diff_dates <- c(diff_dates, date_diffs[closest_index])
+#     
+#     # Add the corresponding date from date2 to the corresponding_dates vector
+#     corresponding_dates <- c(corresponding_dates, as.Date(date2_subset[closest_index]))
+#   }
+# }
+# 
+# # Create a data frame with date1, closest_dates, diff_dates, and corresponding_dates as columns
+# output_df <- data.frame(date1, closest_dates, diff_dates, corresponding_dates)
+# 
+# # Print the output data frame
+# output_df
 
 
 mergetest1 <- dplyr::bind_rows(mergetest,sdf_trimmed)
@@ -501,6 +615,10 @@ tempdataset <- read.csv("C:/Users/bigfo/OneDrive/Desktop/school/neon data/trip a
 # tempdata <- loadByProduct(dpID = 'DP4.00001.001', site = 'KONZ')
 tempdata <- loadByProduct(dpID = 'DP1.00003.001')
 View(tempdata$variables_00001)
+tempdataset <- read.csv("C:/Users/bigfo/OneDrive/Desktop/Research/PRISM Data/PRISM Data _ initialclean/PRISM Data _ initialclean/PRISM Data/PRISM_ppt_tmean_provisional_4km_20220802_20230131.csv")
+tempdataset1 <- read.csv("C:/Users/bigfo/OneDrive/Desktop/Research/PRISM Data/PRISM Data _ initialclean/PRISM Data _ initialclean/PRISM Data/PRISM_ppt_tmean_stable_4km_20181102_20181201.csv")
+tempdataset$Date <- mdy(tempdataset$Date)
+fusetemp5 <- dplyr::bind_rows(fusetemp4,tempdataset)
 
 tempdataset <- tempdata$wss_daily_temp
 #TO CHECK IF DIRECTLY DOWNLOADED DATA IS SAME AS DATA ThROUGh R, USE THIS FUNCTION:
@@ -532,7 +650,7 @@ View(finalmerge)
 # View(tempdata$RH_30min)
 write.csv(finalmerge,"D:/NEONexample/full_only species.csv",row.names = FALSE)
 
-# *PRECIPITATION DATA ----
+#*PRECIPITATION DATA ----
 #for combining the downloaded data into tables:
 stackByTable(filepath="/Users/a426f262/Downloads/Directly Downloaded Data/NEON_precipitation.zip")
 #load the stacked data:
@@ -555,3 +673,154 @@ View(finalmerge)
 # View(tempdata$RH_30min)
 
 write.csv(finalmerge,"D:/NEONexample/full_allcounts.csv",row.names = FALSE)
+
+#*COMBINED DATA ----
+#load combined tick and fire data:
+combinedData <- read.csv("C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/Tick NEON Data Cleaned/AAmericanum_cleaned_withFire.csv")
+library(lubridate)
+fusetemp4$Date <- mdy(fusetemp4$Date)
+#load data and combine with temp data
+combineddata <- read.csv("C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/Tick NEON Data Cleaned/AAmericanum_cleaned_withFire.csv")
+originalDate <- combineddata$collectDate
+combineddata$collectDate <- mdy_hm(combineddata$collectDate)
+combineddata$collectDate <- as.Date(combineddata$collectDate)
+
+#We're overthinking this. Jsut remove the non-matching part and create a new column to be removed later
+combineddata$namedLocation1 = substr(combineddata$namedLocation,1,nchar(combineddata$namedLocation)-4)
+
+combineddata1 <- merge(combineddata,fusetemp5, by.x = c("namedLocation1","collectDate"), by.y = c("Name","Date"), all.x = TRUE)
+
+#fill blanks with NA, need to write it to csv and load to convert columns to character before running
+#load combined tick and fire data:
+combineddata2 <- read.csv("C:/Users/bigfo/OneDrive/Desktop/combined.csv")
+
+combineddata2 <- combineddata2 %>%
+  mutate(across(everything(), ~ifelse(.=="", NA, as.character(.))))
+
+#convert to dates
+combineddata2$collectDate <- ymd(combineddata2$collectDate)
+combineddata2$endDateFire <- mdy(combineddata2$endDateFire)
+#Add the days since last burn column:
+combineddata2$daysSinceLastBurn <- difftime(combineddata2$endDateFire,combineddata2$collectDate, units = "days")
+#this works, but gives negative # of days so let's make it positive
+combineddata2$daysSinceLastBurn <- combineddata2$daysSinceLastBurn * -1
+which(combineddata2$daysSinceLastBurn<0,arr.ind = TRUE)
+#save to csv
+write.csv(combineddata2,"C:/Users/bigfo/OneDrive/Desktop/combined.csv",row.names = FALSE)
+
+#load combiend data
+loadedcombineddata <- read.csv("C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/combined.csv")
+combineddata2 <- loadedcombineddata
+
+#repalce NAs with 0
+combineddata2$individualCount[is.na(combineddata2$individualCount)] <- 0
+
+library(ggplot2)
+#PLOTS FOR PRECIP
+#convert to numeric
+combineddata2$ppt <- as.numeric(combineddata2$ppt)
+#basic plot
+plot(combineddata2$ppt,combineddata2$individualCount)
+combineddata2 %>% count(ppt)
+# Calculate the average individualCount per ppt
+avgIndividualCountPPT = combineddata2 %>%
+  group_by(ppt) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountPPT, aes(x = ppt, y = avgCount)) +
+  geom_point() +
+  xlab("Precipitation") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Precipitation")
+#add column for days since last precipitation?
+
+#PLOTS FOR TSA
+plot(combineddata2$totalSampledArea,combineddata2$individualCount)
+combineddata2 %>% count(totalSampledArea)
+#convert totalsampledarea to numeric
+combineddata2$totalSampledArea <- as.numeric(combineddata2$totalSampledArea)
+# Calculate the average individualCount per totalSampledArea
+avgIndividualCountTSA = combineddata2 %>%
+  group_by(totalSampledArea) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountTSA, aes(x = totalSampledArea, y = avgCount)) +
+  geom_point() +
+  xlab("Total Sampled Area") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Total Sampled Area")
+#create bar graph
+ggplot(avgIndividualCountTSA, aes(x = totalSampledArea, y = avgCount)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  xlab("Total Sampled Area") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Total Sampled Area")
+
+#PLOTS FOR TEMP
+#convert to numeric
+combineddata2$tmean <- as.numeric(combineddata2$tmean)
+#basic plot and count per temp measurement
+plot(combineddata2$tmean,combineddata2$individualCount)
+combineddata2 %>% count(tmean)
+# Calculate the average individualCount per avg temp
+avgIndividualCountTmean = combineddata2 %>%
+  group_by(tmean) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountTmean, aes(x = tmean, y = avgCount)) +
+  geom_point() +
+  xlab("Average Temperature") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Average Temp")
+
+#PLOTS FOR DAYS SINCE LAST BURN
+plot(combineddata2$daysSinceLastBurn,combineddata2$individualCount)
+combineddata2 %>% count(daysSinceLastBurn)
+# Calculate the average individualCount per #ofdaysSinceLastBurn
+avgIndividualCountDSLB = combineddata2 %>%
+  group_by(daysSinceLastBurn) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountDSLB, aes(x = daysSinceLastBurn, y = avgCount)) +
+  geom_point() +
+  xlab("Days Since Last Burn") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per # of Days Since Last Burn")
+
+
+#plot those columns that contain characters
+
+#PLOTS FOR ENVIRO CLASS
+#basic plot + count
+ggplot(data=combineddata2, mapping = aes(x = nlcdClass, y = individualCount)) + geom_count(stat = "identity") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+combineddata2 %>% count(nlcdClass)
+# Calculate the average individualCount per Envrio class
+avgIndividualCountNLCD = combineddata2 %>%
+  group_by(nlcdClass) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountNLCD, aes(x = nlcdClass, y = avgCount)) +
+  geom_point() +
+  xlab("Environment") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Enivromental Class") +
+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+#PLOTS FOR FIRE SEVERITY
+#basic plot
+ggplot(data=combineddata2, mapping = aes(x = fireSeverity, y = individualCount)) + geom_count(stat = "identity") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+combineddata2 %>% count(fireSeverity)
+# Calculate the average individualCount per severity
+avgIndividualCountSev = combineddata2 %>%
+  group_by(fireSeverity) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountSev, aes(x = fireSeverity, y = avgCount)) +
+  geom_point() +
+  xlab("Fire Severity") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Fire Severity") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+
