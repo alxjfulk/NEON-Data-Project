@@ -305,8 +305,12 @@ df1americanum <- df1[df1$scientificName == 'Amblyomma americanum',]
 df1not <- df1[df1$scientificName != 'Amblyomma americanum',]
 #Now we need to compare the dates and plots of the two dataframes and remove those that match from the "not" dataframe. 
 #This allows us to include only those sampling events where they sampled and collected only ticks OTHER than a americanum. (https://stackoverflow.com/questions/72546014/remove-rows-that-do-not-match-common-dates-from-a-separate-data-frame)
-df1not <- df1not %>% filter((!df1not$collectDate %in% df1americanum$collectDate) & (!df1not$plotID %in% df1americanum$plotID))
-#the above line is a bit tricky, we are collecting those dates where sampling occurred, but only ticks other than a americanum were collected,thus we remove those instances (dates) where both a americanum and other species were collected
+#This is a bit tricky. Technically, it is possible that by using this filter, we remove sampling instances that occurred on
+#the same day and at the same time, but at different plots, but I think this is unlikely. The only way that we could ensure
+#that we don't remove relevant records is to create a second dataframe checking for those instances
+df1not1 <- df1not %>% filter((!df1not$collectDate %in% df1americanum$collectDate))
+df1check1 <- df1not %>% filter((df1not$collectDate %in% df1americanum$collectDate) & (!df1not$plotID %in% df1americanum$plotID))
+df1not <- dplyr::bind_rows(df1not1, df1check1)
 
 #now we want to convert all of the indiivudal counts in the "not" dataframe to zeros to indicate absence of a americanum
 df1not$individualCount <- 0
