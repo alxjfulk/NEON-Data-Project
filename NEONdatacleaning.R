@@ -164,7 +164,7 @@ mammaldata_pertrap1 <- mammaldata_pertrap1[!grepl("3",mammaldata_pertrap1$trapSt
 mammaldata_pertrap1 <- mammaldata_pertrap1[!grepl("6",mammaldata_pertrap1$trapStatus),]
 View(mammaldata_pertrap1)
 #Now we want to aggregate based on the siteID since it will remain the same if we are looking in the same site while keeping track of the scientific name, plotID, and date
-View(aggregate(siteID~ collectDate + plotID + scientificName + nlcdClass, data = mammaldata_pertrap1, length))
+View(aggregate(siteID~ collectDate + plotID + scientificName, data = mammaldata_pertrap1, length))
 #if you want to aggregate including the environment type that the mammal is caught in, use the following line instead of the uncommented one
 #finalmammaldata <- aggregate(siteID~ collectDate + plotID + scientificName + nlcdClass, data = mammaldata_pertrap1, length)
 finalmammaldata1 <- aggregate(siteID~ collectDate + plotID + scientificName, data = mammaldata_pertrap1, length)
@@ -596,6 +596,11 @@ mammaldata_pertrap1 <- mammaldata_pertrap1[!grepl("2",mammaldata_pertrap1$trapSt
 mammaldata_pertrap1 <- mammaldata_pertrap1[!grepl("3",mammaldata_pertrap1$trapStatus),]
 mammaldata_pertrap1 <- mammaldata_pertrap1[!grepl("6",mammaldata_pertrap1$trapStatus),]
 View(mammaldata_pertrap1)
+
+#NEED TO REMOVE ANY CAPTURES WHERE SPECIES IS NOT DETERMINED?
+
+
+#FIX THE FILTERING SHOWN BELOW:
 #Now we want to aggregate based on the siteID since it will remain the same if we are looking in the same site while keeping track of the scientific name, plotID, and date
 View(aggregate(siteID~ collectDate + plotID + scientificName + nlcdClass, data = mammaldata_pertrap1, length))
 #if you want to aggregate including the environment type that the mammal is caught in, use the following line instead of the uncommented one
@@ -824,3 +829,25 @@ ggplot(avgIndividualCountSev, aes(x = fireSeverity, y = avgCount)) +
 
 
 
+
+
+#*Explorations####
+#*SOIL DATA
+soildata <- loadByProduct(dpID = 'DP1.00096.001')
+View(soildata)
+#*EDDY COVARIANCE DATA
+eddydata <- loadByProduct(dpID = 'DP4.00200.001')
+#wait on this for now, likely won't need
+View(eddydata)
+#*BIRD DATA
+birddata <- loadByProduct(dpID = 'DP1.10003.001')
+View(birddata)
+#*COURSE DEBRIS DATA
+coursedata <- loadByProduct(dpID = 'DP1.10014.001')
+View(coursedata)
+#*PLOT VEGETATION DATA
+plotvegdata <- loadByProduct(dpID = 'DP1.10017.001')
+View(plotvegdata)
+#*LITTERFALL AND FINE WOODY DEBRIS DATA
+finedata <- loadByProduct(dpID = 'DP1.10033.001')
+View(finedata)
