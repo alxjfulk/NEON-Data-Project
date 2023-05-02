@@ -297,32 +297,50 @@ df2$collectDate <- format(as.POSIXct(df2$collectDate,format='%Y-%m-%d %H:%M:%S')
 df1 <- df1[df1$taxonRank == 'species',]
 
 # View(df1)
+#somehow some rows of only NAs has been included. Let's remove that:
+df1 <- df1[rowSums(is.na(df1)) != ncol(df1),]
 
 #now we need to remove the entries from the field data that had ticks collected so that we avoid duplicate data when merging
 df2zeros <- df2[(df2$adultCount == 0 | is.na(df2$adultCount)) & (df2$nymphCount == 0 | is.na(df2$nymphCount)) & (df2$larvaCount == 0 | is.na(df2$larvaCount)) & !is.na(df2$totalSampledArea),]
 #The above is correct, however, we also need to convert those sampling instances that collected only other species to absence data for a americanum, thus we must edit df1
-#start by splitting into a americanum collections and not (i.e. all the other species)
+#start by splitting into a americanum collections and not (i.e. all the other species). Uisng a simple != didn't work for some reason, so
+#we split each species up and combine depending on the species of interest
 df1americanum <- df1[df1$scientificName == 'Amblyomma americanum',]
-df1not <- df1[df1$scientificName != 'Amblyomma americanum',]
-
+df1maculatum <- df1[df1$scientificName == 'Amblyomma maculatum',]
+df1andersoni <- df1[df1$scientificName == 'Dermacentor andersoni',]
+df1occidentalis <- df1[df1$scientificName == 'Dermacentor occidentalis',]
+df1parumapertus <- df1[df1$scientificName == 'Dermacentor parumapertus',]
+df1variabilis <- df1[df1$scientificName == 'Dermacentor variabilis',]
+df1leporispalustris <- df1[df1$scientificName == 'Haemaphysalis leporispalustris',]
+df1longicornis <- df1[df1$scientificName == 'Haemaphysalis longicornis',]
+df1affinis <- df1[df1$scientificName == 'Ixodes affinis',]
+df1angustus <- df1[df1$scientificName == 'Ixodes angustus',]
+df1dentatus <- df1[df1$scientificName == 'Ixodes dentatus',]
+df1marxi <- df1[df1$scientificName == 'Ixodes marxi',]
+df1muris <- df1[df1$scientificName == 'Ixodes muris',]
+df1pacificus <- df1[df1$scientificName == 'Ixodes pacificus',]
 df1scapularis <- df1[df1$scientificName == 'Ixodes scapularis',]
-df1notI <- df1[df1$scientificName != 'Ixodes scapularis',]
-df1not1I <- df1notI %>% filter((!df1notI$collectDate %in% df1scapularis$collectDate))
-df1check1I <- df1notI %>% filter((df1notI$collectDate %in% df1scapularis$collectDate) & (!df1notI$plotID %in% df1scapularis$plotID))
-df1notI <- dplyr::bind_rows(df1not1I, df1check1I)
-df1I <- dplyr::bind_rows(df1scapularis, df1notI)
-df1americanum %>% count(scientificName)
-df1not %>% count(scientificName)
-df1scapularis %>% count(scientificName)
-df1notI %>% count(scientificName)
+
+#now combine all of the df of the other species
+df1not <- dplyr::bind_rows(df1maculatum,df1andersoni,df1occidentalis,df1parumapertus,df1variabilis,
+                           df1leporispalustris,df1longicornis,df1affinis,df1angustus,df1dentatus,
+                           df1marxi,df1muris,df1pacificus,df1scapularis)
+
+#FROM PREVIOUS METHOD (GAVE DIFFERENT COUNTS FOR !=)
+# df1notI <- df1[df1$scientificName != 'Ixodes scapularis',]
+# df1not1I <- df1notI %>% filter((!df1notI$collectDate %in% df1scapularis$collectDate))
+# df1check1I <- df1notI %>% filter((df1notI$collectDate %in% df1scapularis$collectDate) & (!df1notI$plotID %in% df1scapularis$plotID))
+# df1notI <- dplyr::bind_rows(df1not1I, df1check1I)
+# df1I <- dplyr::bind_rows(df1scapularis, df1notI)
+
 #Now we need to compare the dates and plots of the two dataframes and remove those that match from the "not" dataframe. 
 #This allows us to include only those sampling events where they sampled and collected only ticks OTHER than a americanum. (https://stackoverflow.com/questions/72546014/remove-rows-that-do-not-match-common-dates-from-a-separate-data-frame)
 #This is a bit tricky. Technically, it is possible that by using this filter, we remove sampling instances that occurred on
 #the same day and at the same time, but at different plots, but I think this is unlikely. The only way that we could ensure
 #that we don't remove relevant records is to create a second dataframe checking for those instances
-df1not1 <- df1not %>% filter((!df1not$collectDate %in% df1americanum$collectDate))
-df1check1 <- df1not %>% filter((df1not$collectDate %in% df1americanum$collectDate) & (!df1not$plotID %in% df1americanum$plotID))
-df1not <- dplyr::bind_rows(df1not1, df1check1)
+# df1not1 <- df1not %>% filter((!df1not$collectDate %in% df1americanum$collectDate))
+# df1check1 <- df1not %>% filter((df1not$collectDate %in% df1americanum$collectDate) & (!df1not$plotID %in% df1americanum$plotID))
+# df1not <- dplyr::bind_rows(df1not1, df1check1)
 
 #now we want to convert all of the indiivudal counts in the "not" dataframe to zeros to indicate absence of a americanum
 df1not$individualCount <- 0
@@ -360,8 +378,6 @@ mergetest$namedLocation <- gsub(" ", "", mergetest$namedLocation, fixed = TRUE)
 mergetest$namedLocation <- gsub(".tck","",as.character(mergetest$namedLocation))
 #View(mergetest)
 
-#somehow some rows of only NAs has been included. Let's remove that:
-mergetest <- mergetest[rowSums(is.na(mergetest)) != ncol(mergetest), ]
 #save to csv
 #write.csv(mergetest,"C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/Tick NEON Data Cleaned/NEON_AAmericanum_tickdatacleaned.csv",row.names = FALSE)
 
@@ -415,34 +431,12 @@ sdf_trimmed$locationIDFire <- gsub(" ", "", sdf_trimmed$locationIDFire, fixed = 
 write.csv(sdf_trimmed,"C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/Fire Data Cleaned/fire_cleaned.csv",row.names = FALSE)
 
 
-#*MAMMAL DATA ----
-mammaldata <- loadByProduct(dpID = 'DP1.10072.001')
-
-#View(mammaldata$variables_10072)
-
-mammaldata_pertrap <- mammaldata$mam_pertrapnight
-
-#we need to remove all of the events that had no successful trapping
-exclude_num <- c("0","1","2","3","6")
-mammaldata_pertrap1 <- mammaldata_pertrap[!grepl(paste(exclude_num, collapse = "|"),mammaldata_pertrap$trapStatus),]
-
-#View(mammaldata_pertrap1)
-
-#NEED TO REMOVE ANY CAPTURES WHERE SPECIES IS NOT DETERMINED?
-
-#Now we want to aggregate based on the siteID since it will remain the same if we are looking in the same site while keeping track of the scientific name, plotID, and date
-#View(aggregate(siteID~ collectDate + plotID + scientificName + nlcdClass, data = mammaldata_pertrap1, length))
-finalmammaldata1 <- aggregate(siteID~ collectDate + plotID + scientificName + nlcdClass, data = mammaldata_pertrap1, length)
-colnames(finalmammaldata1)[5] <- "count"
-colnames(finalmammaldata1)[2] <- "namedLocation"
-
-
 
 #*TEMP, PRECIP, VPD, DEW TEMP DATA ----
 #for combining the downloaded data:
-file_names <- dir('C:/Users/bigfo/OneDrive/Desktop/Research/PRISM Data/final_adjusted/final',full.names = TRUE) #where you have your files
+file_names_temp <- dir('C:/Users/bigfo/OneDrive/Desktop/Research/PRISM Data/final_adjusted/final',full.names = TRUE) #where you have your files
 
-temp_frame <- do.call(rbind,lapply(file_names,read.csv)) #read them all and combine into a single dataframe
+temp_frame <- do.call(rbind,lapply(file_names_temp,read.csv)) #read them all and combine into a single dataframe
 
 temp_frame$Date <- mdy(temp_frame$Date) #convert dates to something R can understand
 
@@ -477,7 +471,7 @@ temp_frame$Date <- mdy(temp_frame$Date) #convert dates to something R can unders
 write.csv(temp_frame,"C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/Temperature Data Cleaned/prismdata.csv",row.names = FALSE)
 
 
-#*COMBINE DATA ----
+#*COMBINE TEMP DATA 
 #load data and combine with temp data
 combineddata <- read.csv("C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/Tick NEON Data Cleaned/AAmericanum_cleaned_withFire.csv")
 originalDate <- combineddata$collectDate
@@ -614,9 +608,6 @@ combineddata3 <- merge(combineddata3,megapit, by.x = 'plotID1', by.y = 'siteID',
 # #wait on this for now, likely won't need
 # View(eddydata)
 
-#*BIRD DATA####
-birddata <- loadByProduct(dpID = 'DP1.10003.001')
-View(birddata)
 
 #*COURSE DEBRIS DATA####
 coursedata <- loadByProduct(dpID = 'DP1.10014.001')
@@ -724,6 +715,128 @@ finelign <- finelign %>% group_by(plotID) %>%
 combineddata5 <- combineddata4
 combineddata5 <- merge(combineddata5,finelitterCN, by = 'plotID',all.x = TRUE)
 combineddata5 <- merge(combineddata5,finelign, by = 'plotID', all.x = TRUE)
+
+#*NDVI DATA####
+#for combining the downloaded data. YOU MUST CHOOSE YOUR WORKING DIRECTORY FOR THIS:
+file_names_ndvi <- dir('C:/Users/bigfo/OneDrive/Desktop/Research/NDVI/time series csv') #where you have your files
+
+ndvi_frame <- do.call(rbind, lapply(file_names_ndvi, function(x) cbind(read.csv(x), name=strsplit(x,'\\.')[[1]][1]))) #read them all and combine into a single dataframe with file names
+
+ndvi_frame$Date <- mdy(ndvi_frame$system.time_start) #convert dates to something R can understand
+
+ndvi_frame$name <- toupper(ndvi_frame$name) #convert filenames to uppercase
+
+#remove rows that contain NA from NDVI:
+ndvi_frame <- na.omit(ndvi_frame)
+
+#save if needed:
+write.csv(temp_frame,"C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/Temperature Data Cleaned/prismdata.csv",row.names = FALSE)
+
+
+#merge based on nearest date:
+combineddata6 <- lapply(intersect(combineddata5$plotID,ndvi_frame$name),function(id) {
+  d1 <- subset(combineddata5,plotID==id)
+  d2 <- subset(ndvi_frame,name==id)
+  
+  d1$indices <- sapply(d1$collectDate,function(d) which.min(abs(d2$Date - d)))
+  d2$indices <- 1:nrow(d2)
+  
+  merge(d1,d2,by.x=c('plotID','indices'),by.y=c('name','indices'),all.x = T)
+})
+
+combineddata6 <- do.call(rbind,combineddata6)
+combineddata6$indices <- NULL
+combineddata6$system.time_start <- NULL
+
+#rename Date column to avoid issues later
+colnames(combineddata6)[114] <- "nearestDateNDVI"
+
+#*MAMMAL DATA ----
+mammaldata <- loadByProduct(dpID = 'DP1.10072.001')
+
+#View(mammaldata$variables_10072)
+
+mammaldata_pertrap <- mammaldata$mam_pertrapnight
+
+#we need to remove all of the events that had no successful trapping
+exclude_num <- c("0","1","2","3","6")
+mammaldata_pertrap1 <- mammaldata_pertrap[!grepl(paste(exclude_num, collapse = "|"),mammaldata_pertrap$trapStatus),]
+
+#View(mammaldata_pertrap1)
+
+#NEED TO REMOVE ANY CAPTURES WHERE SPECIES IS NOT DETERMINED?
+
+#Now we want to aggregate based on the siteID since it will remain the same if we are looking in the same site while keeping track of the scientific name, plotID, and date
+#View(aggregate(siteID~ collectDate + plotID + scientificName + nlcdClass, data = mammaldata_pertrap1, length))
+finalmammaldata1 <- aggregate(siteID~ collectDate + plotID + nlcdClass, data = mammaldata_pertrap1, length)
+
+finalmammaldata1$Date <- ymd(finalmammaldata1$Date)
+
+colnames(finalmammaldata1)[1] <- "Date"
+colnames(finalmammaldata1)[2] <- "namedLocation"
+colnames(finalmammaldata1)[4] <- "count"
+
+#merge based on nearest date:
+combineddata7 <- lapply(intersect(combineddata6$plotID,finalmammaldata1$namedLocation),function(id) {
+  d1 <- subset(combineddata6,plotID==id)
+  d2 <- subset(finalmammaldata1,namedLocation==id)
+  
+  d1$indices <- sapply(d1$collectDate,function(d) which.min(abs(d2$Date - d)))
+  d2$indices <- 1:nrow(d2)
+  
+  merge(d1,d2,by.x=c('plotID','indices'),by.y=c('namedLocation','indices'),all.x = T)
+})
+
+combineddata7 <- do.call(rbind,combineddata7)
+combineddata7$indices <- NULL
+
+#the above only includes that that are listed in namedLocation, thus we need to subset the original 
+#dataframe and combine it with the new data
+opposite_intersection <- combineddata6$plotID[!(combineddata6$plotID %in% finalmammaldata1$namedLocation)]
+sub_combineddata6 <- subset(combineddata6, plotID %in% opposite_intersection)
+
+#remove nlcdClass.y, rename nlcdClass.x and Date and add empty columns with same names to make merging easy
+combineddata7$nlcdClass.y <- NULL
+colnames(combineddata7)[9] <- "nlcdClass"
+colnames(combineddata7)[115] <- "nearestDateMammal"
+
+sub_combineddata6$nearestDateMammal = NA
+sub_combineddata6$count = NA
+
+#make sure column names match
+my_func <- function(x,y) {
+  for (i in names(x)) {
+    if (!(i %in% names(y))) {
+      print('Warning: Names are not the same')
+      break
+    }  
+    else if(i==tail(names(y),n=1)) {
+      print('Names are identical')
+    }
+  }
+}
+
+my_func(combineddata7,sub_combineddata6)
+
+#merge
+combineddata7 <- merge(combineddata7,sub_combineddata6, all = T)
+  
+#*BIRD DATA####
+birddata <- loadByProduct(dpID = 'DP1.10003.001')
+View(birddata)
+#merge based on nearest date:
+merged_data <- lapply(intersect(combineddata5$plotID,ndvi_frame$name),function(id) {
+  d1 <- subset(combineddata5,plotID==id)
+  d2 <- subset(ndvi_frame,name==id)
+  
+  d1$indices <- sapply(d1$collectDate,function(d) which.min(abs(d2$Date - d)))
+  d2$indices <- 1:nrow(d2)
+  
+  merge(d1,d2,by.x=c('plotID','indices'),by.y=c('name','indices'),all.x = T)
+})
+
+merged_data2 <- do.call(rbind,merged_data)
+merged_data2$indices <- NULL
 
 #*PLOTS####
 #PLOTS FOR PRECIP
