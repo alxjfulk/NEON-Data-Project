@@ -768,13 +768,21 @@ mammaldata_pertrap1 <- mammaldata_pertrap[!grepl(paste(exclude_num, collapse = "
 
 #Now we want to aggregate based on the siteID since it will remain the same if we are looking in the same site while keeping track of the scientific name, plotID, and date
 #View(aggregate(siteID~ collectDate + plotID + scientificName + nlcdClass, data = mammaldata_pertrap1, length))
-finalmammaldata1 <- aggregate(siteID~ collectDate + plotID + nlcdClass, data = mammaldata_pertrap1, length)
+finalmammaldata1 <- aggregate(siteID~ collectDate + plotID, data = mammaldata_pertrap1, length)
 
-finalmammaldata1$Date <- ymd(finalmammaldata1$Date)
+finalmammaldata2 <- aggregate(nlcdClass~ collectDate + siteID, data = mammaldata_pertrap1, length)
 
 colnames(finalmammaldata1)[1] <- "Date"
 colnames(finalmammaldata1)[2] <- "namedLocation"
-colnames(finalmammaldata1)[4] <- "count"
+colnames(finalmammaldata1)[3] <- "count"
+
+colnames(finalmammaldata2)[1] <- "Date"
+colnames(finalmammaldata2)[2] <- "namedLocation"
+colnames(finalmammaldata2)[3] <- "countMammalSite"
+
+finalmammaldata1$Date <- ymd(finalmammaldata1$Date)
+
+finalmammaldata2$Date <- ymd(finalmammaldata2$Date)
 
 #merge based on nearest date:
 combineddata7 <- lapply(intersect(combineddata6$plotID,finalmammaldata1$namedLocation),function(id) {
@@ -795,13 +803,12 @@ combineddata7$indices <- NULL
 opposite_intersection <- combineddata6$plotID[!(combineddata6$plotID %in% finalmammaldata1$namedLocation)]
 sub_combineddata6 <- subset(combineddata6, plotID %in% opposite_intersection)
 
-#remove nlcdClass.y, rename nlcdClass.x and Date and add empty columns with same names to make merging easy
-combineddata7$nlcdClass.y <- NULL
-colnames(combineddata7)[9] <- "nlcdClass"
+#rename Date and add empty columns with same names to make merging easy
 colnames(combineddata7)[115] <- "nearestDateMammal"
+colnames(combineddata7)[116] <- "countMammal"
 
 sub_combineddata6$nearestDateMammal = NA
-sub_combineddata6$count = NA
+sub_combineddata6$countMammal = NA
 
 #make sure column names match
 my_func <- function(x,y) {
@@ -820,50 +827,147 @@ my_func(combineddata7,sub_combineddata6)
 
 #merge
 combineddata7 <- merge(combineddata7,sub_combineddata6, all = T)
-  
-#*BIRD DATA####
-birddata <- loadByProduct(dpID = 'DP1.10003.001')
-View(birddata)
+
+#now do it with counts aggregated to the site rather than the plot
 #merge based on nearest date:
-merged_data <- lapply(intersect(combineddata5$plotID,ndvi_frame$name),function(id) {
-  d1 <- subset(combineddata5,plotID==id)
-  d2 <- subset(ndvi_frame,name==id)
+combineddata8 <- lapply(intersect(combineddata7$plotID1,finalmammaldata2$namedLocation),function(id) {
+  d1 <- subset(combineddata7,plotID1==id)
+  d2 <- subset(finalmammaldata2,namedLocation==id)
   
   d1$indices <- sapply(d1$collectDate,function(d) which.min(abs(d2$Date - d)))
   d2$indices <- 1:nrow(d2)
   
-  merge(d1,d2,by.x=c('plotID','indices'),by.y=c('name','indices'),all.x = T)
+  merge(d1,d2,by.x=c('plotID1','indices'),by.y=c('namedLocation','indices'),all.x = T)
 })
 
-merged_data2 <- do.call(rbind,merged_data)
-merged_data2$indices <- NULL
+combineddata8 <- do.call(rbind,combineddata8)
+combineddata8$indices <- NULL
 
+#rename date column
+colnames(combineddata8)[117] <- "nearestDateMammalSite"
+#site names are matched throughout the dataset since we are using the 4 letter version, so nothing else is needed!
+
+#*BIRD DATA####
+birddata <- loadByProduct(dpID = 'DP1.10003.001')
+
+birdcountdata <- birddata$brd_countdata
+
+birdcountdata$startDate <- format(as.POSIXct(birdcountdata$startDate,format='%Y-%m-%d %H:%M:%S'),format='%Y-%m-%d')
+
+#aggregate by site and plot 
+birdcountdata1 <- aggregate(siteID~ startDate + plotID, data = birdcountdata, length)
+
+birdcountdata2 <- aggregate(plotID~ startDate + siteID, data = birdcountdata, length)
+
+colnames(birdcountdata1)[1] <- "nearestDateBird"
+colnames(birdcountdata1)[2] <- "plotIDBird"
+colnames(birdcountdata1)[3] <- "countBird"
+
+colnames(birdcountdata2)[1] <- "nearestDateBirdSite"
+colnames(birdcountdata2)[2] <- "siteIDBird"
+colnames(birdcountdata2)[3] <- "countBirdSite"
+
+birdcountdata1$nearestDateBird <- ymd(birdcountdata1$nearestDateBird)
+birdcountdata2$nearestDateBirdSite <- ymd(birdcountdata2$nearestDateBirdSite)
+#merge based on nearest date:
+combineddata9 <- lapply(intersect(combineddata8$plotID,birdcountdata1$plotIDBird),function(id) {
+  d1 <- subset(combineddata8,plotID==id)
+  d2 <- subset(birdcountdata1,plotIDBird==id)
+  
+  d1$indices <- sapply(d1$collectDate,function(d) which.min(abs(d2$nearestDateBird - d)))
+  d2$indices <- 1:nrow(d2)
+  
+  merge(d1,d2,by.x=c('plotID','indices'),by.y=c('plotIDBird','indices'),all.x = T)
+})
+
+combineddata9 <- do.call(rbind,combineddata9)
+combineddata9$indices <- NULL
+#the above only includes that that are listed in namedLocation, thus we need to subset the original 
+#dataframe and combine it with the new data
+opposite_intersection <- combineddata8$plotID[!(combineddata8$plotID %in% birdcountdata1$plotIDBird)]
+sub_combineddata9 <- subset(combineddata8, plotID %in% opposite_intersection)
+
+#add empty columns with same names to make merging easy
+sub_combineddata9$nearestDateBird = NA
+sub_combineddata9$countBird = NA
+
+#make sure column names match
+my_func(combineddata9,sub_combineddata9)
+
+#merge
+combineddata9 <- merge(combineddata9,sub_combineddata9, all = T)
+
+#merge based on nearest date:
+combineddata9 <- lapply(intersect(combineddata9$plotID1,birdcountdata2$siteIDBird),function(id) {
+  d1 <- subset(combineddata9,plotID1==id)
+  d2 <- subset(birdcountdata2,siteIDBird==id)
+  
+  d1$indices <- sapply(d1$collectDate,function(d) which.min(abs(d2$nearestDateBirdSite - d)))
+  d2$indices <- 1:nrow(d2)
+  
+  merge(d1,d2,by.x=c('plotID1','indices'),by.y=c('siteIDBird','indices'),all.x = T)
+})
+
+combineddata9 <- do.call(rbind,combineddata9)
+combineddata9$indices <- NULL
 #*PLOTS####
-#PLOTS FOR PRECIP
-#convert to numeric
-combineddata2$ppt <- as.numeric(combineddata2$ppt)
-#basic plot
-plot(combineddata2$ppt,combineddata2$individualCount)
-combineddata2 %>% count(ppt)
-# Calculate the average individualCount per ppt
-avgIndividualCountPPT = combineddata2 %>%
-  group_by(ppt) %>%
+#PLOTS FOR ENVIRO CLASS
+#basic plot + count
+ggplot(data=combineddata9, mapping = aes(x = nlcdClass, y = individualCount)) + geom_count(stat = "identity") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+combineddata9 %>% count(nlcdClass)
+# Calculate the average individualCount per Envrio class
+avgIndividualCountNLCD = combineddata9 %>%
+  group_by(nlcdClass) %>%
   summarize(avgCount = mean(individualCount))
 # Create a scatter plot
-ggplot(avgIndividualCountPPT, aes(x = ppt, y = avgCount)) +
+ggplot(avgIndividualCountNLCD, aes(x = nlcdClass, y = avgCount)) +
   geom_point() +
-  xlab("Precipitation") +
+  xlab("Environment") +
   ylab("Average Individual Count") +
-  ggtitle("Average Individual Count per Precipitation")
-#add column for days since last precipitation?
+  ggtitle("Average Individual Count per Enivromental Class") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+#PLOTS FOR ELEVATION
+#convert to numeric
+combineddata9$elevation <- as.numeric(combineddata9$elevation)
+#basic plot and count per temp measurement
+plot(combineddata9$elevation,combineddata9$individualCount)
+combineddata9 %>% count(elevation)
+# Calculate the average individualCount per avg temp
+avgIndividualCountElevation = combineddata9 %>%
+  group_by(elevation) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountElevation, aes(x = elevation, y = avgCount)) +
+  geom_point() +
+  xlab("Elevation") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Elevation")
+
+#PLOTS FOR ELEVATION PRISM
+#convert to numeric
+combineddata9$Elevation <- as.numeric(combineddata9$Elevation)
+#basic plot and count per temp measurement
+plot(combineddata9$Elevation,combineddata9$individualCount)
+combineddata9 %>% count(Elevation)
+# Calculate the average individualCount per avg temp
+avgIndividualCountElevationPRISM = combineddata9 %>%
+  group_by(Elevation) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountElevationPRISM, aes(x = Elevation, y = avgCount)) +
+  geom_point() +
+  xlab("Elevation") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Elevation")
 
 #PLOTS FOR TSA
-plot(combineddata2$totalSampledArea,combineddata2$individualCount)
-combineddata2 %>% count(totalSampledArea)
+plot(combineddata9$totalSampledArea,combineddata9$individualCount)
+combineddata9 %>% count(totalSampledArea)
 #convert totalsampledarea to numeric
-combineddata2$totalSampledArea <- as.numeric(combineddata2$totalSampledArea)
+combineddata9$totalSampledArea <- as.numeric(combineddata9$totalSampledArea)
 # Calculate the average individualCount per totalSampledArea
-avgIndividualCountTSA = combineddata2 %>%
+avgIndividualCountTSA = combineddata9 %>%
   group_by(totalSampledArea) %>%
   summarize(avgCount = mean(individualCount))
 # Create a scatter plot
@@ -879,14 +983,50 @@ ggplot(avgIndividualCountTSA, aes(x = totalSampledArea, y = avgCount)) +
   ylab("Average Individual Count") +
   ggtitle("Average Individual Count per Total Sampled Area")
 
+#PLOTS FOR FIRE SEVERITY
+#basic plot
+ggplot(data=combineddata9, mapping = aes(x = fireSeverity, y = individualCount)) + geom_count(stat = "identity") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+combineddata9 %>% count(fireSeverity)
+# Calculate the average individualCount per severity
+avgIndividualCountSev = combineddata9 %>%
+  group_by(fireSeverity) %>%
+  summarize(avgCount = mean(individualCount))
+avgIndividualCountSev[5,1] <- "No Burns"
+# Create a scatter plot
+ggplot(avgIndividualCountSev, aes(x = fireSeverity, y = avgCount)) +
+  geom_point() +
+  xlab("Fire Severity") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Fire Severity") +
+  scale_x_discrete(limits = c("low","medium","high","unknown","No Burns")) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+#PLOTS FOR PRECIP
+#convert to numeric
+combineddata9$ppt <- as.numeric(combineddata9$ppt)
+#basic plot
+plot(combineddata9$ppt,combineddata9$individualCount)
+combineddata9 %>% count(ppt)
+# Calculate the average individualCount per ppt
+avgIndividualCountPPT = combineddata9 %>%
+  group_by(ppt) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountPPT, aes(x = ppt, y = avgCount)) +
+  geom_point() +
+  xlab("Precipitation") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Precipitation")
+#add column for days since last precipitation?
+
 #PLOTS FOR TEMP
 #convert to numeric
-combineddata2$tmean <- as.numeric(combineddata2$tmean)
+combineddata9$tmean <- as.numeric(combineddata9$tmean)
 #basic plot and count per temp measurement
-plot(combineddata2$tmean,combineddata2$individualCount)
-combineddata2 %>% count(tmean)
+plot(combineddata9$tmean,combineddata9$individualCount)
+combineddata9 %>% count(tmean)
 # Calculate the average individualCount per avg temp
-avgIndividualCountTmean = combineddata2 %>%
+avgIndividualCountTmean = combineddata9 %>%
   group_by(tmean) %>%
   summarize(avgCount = mean(individualCount))
 # Create a scatter plot
@@ -896,11 +1036,79 @@ ggplot(avgIndividualCountTmean, aes(x = tmean, y = avgCount)) +
   ylab("Average Individual Count") +
   ggtitle("Average Individual Count per Average Temp")
 
+#PLOTS FOR  Min TEMP
+#convert to numeric
+combineddata9$tmin <- as.numeric(combineddata9$tmin)
+#basic plot and count per temp measurement
+plot(combineddata9$tmin,combineddata9$individualCount)
+combineddata9 %>% count(tmin)
+# Calculate the average individualCount per min temp
+avgIndividualCountTmin = combineddata9 %>%
+  group_by(tmin) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountTmin, aes(x = tmin, y = avgCount)) +
+  geom_point() +
+  xlab("Minimum Temperature") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Min Temp")
+
+#PLOTS FOR  Max TEMP
+#convert to numeric
+combineddata9$tmax <- as.numeric(combineddata9$tmax)
+#basic plot and count per temp measurement
+plot(combineddata9$tmax,combineddata9$individualCount)
+combineddata9 %>% count(tmax)
+# Calculate the average individualCount per min temp
+avgIndividualCountTmax = combineddata9 %>%
+  group_by(tmax) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountTmax, aes(x = tmax, y = avgCount)) +
+  geom_point() +
+  xlab("Maximum Temperature") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Max Temp")
+
+#PLOTS FOR  min vdp
+#convert to numeric
+combineddata9$vpdmin <- as.numeric(combineddata9$vpdmin)
+#basic plot and count per temp measurement
+plot(combineddata9$vpdmin,combineddata9$individualCount)
+combineddata9 %>% count(vpdmin)
+# Calculate the average individualCount per min temp
+avgIndividualCountVPDmin = combineddata9 %>%
+  group_by(vpdmin) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountVPDmin, aes(x = vpdmin, y = avgCount)) +
+  geom_point() +
+  xlab("Minimum VPD") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Min VPD")
+
+#PLOTS FOR  max vdp
+#convert to numeric
+combineddata9$vpdmax <- as.numeric(combineddata9$vpdmax)
+#basic plot and count per temp measurement
+plot(combineddata9$vpdmax,combineddata9$individualCount)
+combineddata9 %>% count(vpdmax)
+# Calculate the average individualCount per min temp
+avgIndividualCountVPDmax = combineddata9 %>%
+  group_by(vpdmax) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountVPDmax, aes(x = vpdmax, y = avgCount)) +
+  geom_point() +
+  xlab("Maximum VPD") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Max VPD")
+
 #PLOTS FOR DAYS SINCE LAST BURN
-plot(combineddata2$daysSinceLastBurn,combineddata2$individualCount)
-combineddata2 %>% count(daysSinceLastBurn)
+plot(combineddata9$daysSinceLastBurn,combineddata9$individualCount)
+combineddata9 %>% count(daysSinceLastBurn)
 # Calculate the average individualCount per #ofdaysSinceLastBurn
-avgIndividualCountDSLB = combineddata2 %>%
+avgIndividualCountDSLB = combineddata9 %>%
   group_by(daysSinceLastBurn) %>%
   summarize(avgCount = mean(individualCount))
 # Create a scatter plot
@@ -910,41 +1118,1249 @@ ggplot(avgIndividualCountDSLB, aes(x = daysSinceLastBurn, y = avgCount)) +
   ylab("Average Individual Count") +
   ggtitle("Average Individual Count per # of Days Since Last Burn")
 
-
-#plot those columns that contain characters
-
-#PLOTS FOR ENVIRO CLASS
-#basic plot + count
-ggplot(data=combineddata2, mapping = aes(x = nlcdClass, y = individualCount)) + geom_count(stat = "identity") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-combineddata2 %>% count(nlcdClass)
-# Calculate the average individualCount per Envrio class
-avgIndividualCountNLCD = combineddata2 %>%
-  group_by(nlcdClass) %>%
+#PLOTS FOR course frag 2 to 5
+plot(combineddata9$mean_coarseFrag2To5,combineddata9$individualCount)
+combineddata9 %>% count(mean_coarseFrag2To5)
+# Calculate the average individualCount per mean_coarseFrag2To5
+avgIndividualCountCourse2to5 = combineddata9 %>%
+  group_by(mean_coarseFrag2To5) %>%
   summarize(avgCount = mean(individualCount))
 # Create a scatter plot
-ggplot(avgIndividualCountNLCD, aes(x = nlcdClass, y = avgCount)) +
+ggplot(avgIndividualCountCourse2to5, aes(x = mean_coarseFrag2To5, y = avgCount)) +
   geom_point() +
-  xlab("Environment") +
+  xlab("Course Fragments 2 to 5") +
   ylab("Average Individual Count") +
-  ggtitle("Average Individual Count per Enivromental Class") +
- theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  ggtitle("Average Individual Count per Course Frag 2 to 5")
 
-#PLOTS FOR FIRE SEVERITY
-#basic plot
-ggplot(data=combineddata2, mapping = aes(x = fireSeverity, y = individualCount)) + geom_count(stat = "identity") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-combineddata2 %>% count(fireSeverity)
-# Calculate the average individualCount per severity
-avgIndividualCountSev = combineddata2 %>%
-  group_by(fireSeverity) %>%
+#PLOTS FOR course frag 5 to 20
+plot(combineddata9$mean_coarseFrag5To20,combineddata9$individualCount)
+combineddata9 %>% count(mean_coarseFrag5To20)
+# Calculate the average individualCount per mean_coarseFrag2To5
+avgIndividualCountCourse5to20 = combineddata9 %>%
+  group_by(mean_coarseFrag5To20) %>%
   summarize(avgCount = mean(individualCount))
 # Create a scatter plot
-ggplot(avgIndividualCountSev, aes(x = fireSeverity, y = avgCount)) +
+ggplot(avgIndividualCountCourse5to20, aes(x = mean_coarseFrag5To20, y = avgCount)) +
   geom_point() +
-  xlab("Fire Severity") +
+  xlab("Course Fragments 5 to 20") +
   ylab("Average Individual Count") +
-  ggtitle("Average Individual Count per Fire Severity") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  ggtitle("Average Individual Count per Course Frag 5 to 20")
 
+#PLOTS FOR sand total
+plot(combineddata9$mean_sandTotal,combineddata9$individualCount)
+combineddata9 %>% count(mean_sandTotal)
+# Calculate the average individualCount per sandTotal
+avgIndividualCountSandTotal = combineddata9 %>%
+  group_by(mean_sandTotal) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountSandTotal, aes(x = mean_sandTotal, y = avgCount)) +
+  geom_point() +
+  xlab("Sand Total") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Sand Total")
 
+#PLOTS FOR silt total
+plot(combineddata9$mean_siltTotal,combineddata9$individualCount)
+combineddata9 %>% count(mean_siltTotal)
+# Calculate the average individualCount per sandTotal
+avgIndividualCountSiltTotal = combineddata9 %>%
+  group_by(mean_siltTotal) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountSiltTotal, aes(x = mean_siltTotal, y = avgCount)) +
+  geom_point() +
+  xlab("Silt Total") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Silt Total")
 
+#PLOTS FOR clay total
+plot(combineddata9$mean_clayTotal,combineddata9$individualCount)
+combineddata9 %>% count(mean_clayTotal)
+# Calculate the average individualCount per sandTotal
+avgIndividualCountClayTotal = combineddata9 %>%
+  group_by(mean_clayTotal) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountClayTotal, aes(x = mean_clayTotal, y = avgCount)) +
+  geom_point() +
+  xlab("Clay Total") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Clay Total")
 
+#PLOTS FOR carbonate clay total
+plot(combineddata9$mean_carbonateClay,combineddata9$individualCount)
+combineddata9 %>% count(mean_carbonateClay)
+# Calculate the average individualCount per carbonateClay
+avgIndividualCountCarbonateClay = combineddata9 %>%
+  group_by(mean_carbonateClay) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountCarbonateClay, aes(x = mean_carbonateClay, y = avgCount)) +
+  geom_point() +
+  xlab("Carbonate Clay") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Carbonate Clay")
+
+#PLOTS FOR fine clay #NO VLAUES, CAN REMOVE
+plot(combineddata9$mean_clayFineContent,combineddata9$individualCount)
+combineddata9 %>% count(mean_clayFineContent)
+# Calculate the average individualCount per clayFineContent
+avgIndividualCountFineClay = combineddata9 %>%
+  group_by(mean_clayFineContent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountFineClay, aes(x = mean_clayFineContent, y = avgCount)) +
+  geom_point() +
+  xlab("Fine Clay") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Fine Clay")
+
+#PLOTS FOR fine silt
+plot(combineddata9$mean_siltFineContent,combineddata9$individualCount)
+combineddata9 %>% count(mean_siltFineContent)
+# Calculate the average individualCount per clayFineContent
+avgIndividualCountFineSilt = combineddata9 %>%
+  group_by(mean_siltFineContent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountFineSilt, aes(x = mean_siltFineContent, y = avgCount)) +
+  geom_point() +
+  xlab("Fine Silt") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Fine Silt")
+
+#PLOTS FOR coarse silt
+plot(combineddata9$mean_siltCoarseContent,combineddata9$individualCount)
+combineddata9 %>% count(mean_siltCoarseContent)
+# Calculate the average individualCount per clayFineContent
+avgIndividualCountCoarseSilt = combineddata9 %>%
+  group_by(mean_siltCoarseContent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountCoarseSilt, aes(x = mean_siltCoarseContent, y = avgCount)) +
+  geom_point() +
+  xlab("Coarse Silt") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Coarse Silt")
+
+#PLOTS FOR sandVeryFine
+plot(combineddata9$mean_sandVeryFineContent,combineddata9$individualCount)
+combineddata9 %>% count(mean_sandVeryFineContent)
+# Calculate the average individualCount per sandVeryFineContent
+avgIndividualCountVeryFineSand = combineddata9 %>%
+  group_by(mean_sandVeryFineContent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountVeryFineSand, aes(x = mean_sandVeryFineContent, y = avgCount)) +
+  geom_point() +
+  xlab("Very Fine Sand") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Very Fine Sand")
+
+#PLOTS FOR sandFine
+plot(combineddata9$mean_sandFineContent,combineddata9$individualCount)
+combineddata9 %>% count(mean_sandFineContent)
+# Calculate the average individualCount per sandFineContent
+avgIndividualCountFineSand = combineddata9 %>%
+  group_by(mean_sandFineContent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountFineSand, aes(x = mean_sandFineContent, y = avgCount)) +
+  geom_point() +
+  xlab("Fine Sand") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Fine Sand")
+
+#PLOTS FOR sandMedium
+plot(combineddata9$mean_sandMediumContent,combineddata9$individualCount)
+combineddata9 %>% count(mean_sandMediumContent)
+# Calculate the average individualCount per sandVeryFineContent
+avgIndividualCountMediumSand = combineddata9 %>%
+  group_by(mean_sandMediumContent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountMediumSand, aes(x = mean_sandMediumContent, y = avgCount)) +
+  geom_point() +
+  xlab("Medium Sand") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Medium Sand")
+
+#PLOTS FOR sandCoarse
+plot(combineddata9$mean_sandCoarseContent,combineddata9$individualCount)
+combineddata9 %>% count(mean_sandCoarseContent)
+# Calculate the average individualCount per sandCoarseContent
+avgIndividualCountCoarseSand = combineddata9 %>%
+  group_by(mean_sandCoarseContent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountCoarseSand, aes(x = mean_sandCoarseContent, y = avgCount)) +
+  geom_point() +
+  xlab("Coarse Sand") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Coarse Sand")
+
+#PLOTS FOR sandVeryCoarse
+plot(combineddata9$mean_sandVeryCoarseContent,combineddata9$individualCount)
+combineddata9 %>% count(mean_sandVeryCoarseContent)
+# Calculate the average individualCount per sandCoarseContent
+avgIndividualCountVeryCoarseSand = combineddata9 %>%
+  group_by(mean_sandVeryCoarseContent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountVeryCoarseSand, aes(x = mean_sandVeryCoarseContent, y = avgCount)) +
+  geom_point() +
+  xlab("Very Coarse Sand") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Very Coarse Sand")
+
+#PLOTS FOR carbon Total
+plot(combineddata9$mean_carbonTot,combineddata9$individualCount)
+combineddata9 %>% count(mean_carbonTot)
+# Calculate the average individualCount per sandCoarseContent
+avgIndividualCountcarbonTotal = combineddata9 %>%
+  group_by(mean_carbonTot) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcarbonTotal, aes(x = mean_carbonTot, y = avgCount)) +
+  geom_point() +
+  xlab("Carbon Total") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Carbon Total")
+
+#PLOTS FOR nitrogen Total
+plot(combineddata9$mean_nitrogenTot,combineddata9$individualCount)
+combineddata9 %>% count(mean_nitrogenTot)
+# Calculate the average individualCount per sandCoarseContent
+avgIndividualCountnitrogenTotal = combineddata9 %>%
+  group_by(mean_nitrogenTot) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountnitrogenTotal, aes(x = mean_nitrogenTot, y = avgCount)) +
+  geom_point() +
+  xlab("Nitrogen Total") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Nitrogen Total")
+
+#PLOTS FOR sulfur Total
+plot(combineddata9$mean_sulfurTot,combineddata9$individualCount)
+combineddata9 %>% count(mean_sulfurTot)
+# Calculate the average individualCount per sandCoarseContent
+avgIndividualCountsulfurTotal = combineddata9 %>%
+  group_by(mean_sulfurTot) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountsulfurTotal, aes(x = mean_sulfurTot, y = avgCount)) +
+  geom_point() +
+  xlab("Sulfur Total") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Sulfur Total")
+
+#PLOTS FOR est OC
+plot(combineddata9$mean_estimatedOC,combineddata9$individualCount)
+combineddata9 %>% count(mean_estimatedOC)
+# Calculate the average individualCount per sandCoarseContent
+avgIndividualCountestimatedOC = combineddata9 %>%
+  group_by(mean_estimatedOC) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountestimatedOC, aes(x = mean_estimatedOC, y = avgCount)) +
+  geom_point() +
+  xlab("Estimated OC") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per Estimated OC")
+
+#PLOTS FOR alMjelm
+plot(combineddata9$mean_alMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_alMjelm)
+# Calculate the average individualCount per alMjelm
+avgIndividualCountalMjelm = combineddata9 %>%
+  group_by(mean_alMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountalMjelm, aes(x = mean_alMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("alMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per alMjelm")
+
+#PLOTS FOR caMjelm
+plot(combineddata9$mean_caMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_caMjelm)
+# Calculate the average individualCount per alMjelm
+avgIndividualCountcaMjelm = combineddata9 %>%
+  group_by(mean_caMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcaMjelm, aes(x = mean_caMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("caMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per caMjelm")
+
+#PLOTS FOR feMjelm
+plot(combineddata9$mean_feMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_feMjelm)
+# Calculate the average individualCount per alMjelm
+avgIndividualCountfeMjelm = combineddata9 %>%
+  group_by(mean_feMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountfeMjelm, aes(x = mean_feMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("feMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per feMjelm")
+
+#PLOTS FOR kMjelm
+plot(combineddata9$mean_kMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_kMjelm)
+# Calculate the average individualCount per alMjelm
+avgIndividualCountkMjelm = combineddata9 %>%
+  group_by(mean_kMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountkMjelm, aes(x = mean_kMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("kMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per kMjelm")
+
+#PLOTS FOR mgMjelm
+plot(combineddata9$mean_mgMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_mgMjelm)
+# Calculate the average individualCount per alMjelm
+avgIndividualCountmgMjelm = combineddata9 %>%
+  group_by(mean_mgMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountmgMjelm, aes(x = mean_mgMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("mgMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per mgMjelm")
+
+#PLOTS FOR mnMjelm
+plot(combineddata9$mean_mnMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_mnMjelm)
+# Calculate the average individualCount per alMjelm
+avgIndividualCountmnMjelm = combineddata9 %>%
+  group_by(mean_mnMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountmnMjelm, aes(x = mean_mnMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("mnMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per mnMjelm")
+
+#PLOTS FOR naMjelm
+plot(combineddata9$mean_naMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_naMjelm)
+# Calculate the average individualCount per alMjelm
+avgIndividualCountnaMjelm = combineddata9 %>%
+  group_by(mean_naMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountnaMjelm, aes(x = mean_naMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("naMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per naMjelm")
+
+#PLOTS FOR pMjelm
+plot(combineddata9$mean_pMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_pMjelm)
+# Calculate the average individualCount per alMjelm
+avgIndividualCountpMjelm = combineddata9 %>%
+  group_by(mean_pMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountpMjelm, aes(x = mean_pMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("pMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per pMjelm")
+
+#PLOTS FOR siMjelm
+plot(combineddata9$mean_siMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_siMjelm)
+# Calculate the average individualCount per alMjelm
+avgIndividualCountsiMjelm = combineddata9 %>%
+  group_by(mean_siMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountsiMjelm, aes(x = mean_siMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("siMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per siMjelm")
+
+#PLOTS FOR srMjelm
+plot(combineddata9$mean_srMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_srMjelm)
+# Calculate the average individualCount per alMjelm
+avgIndividualCountsrMjelm = combineddata9 %>%
+  group_by(mean_srMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountsrMjelm, aes(x = mean_srMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("srMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per srMjelm")
+
+#PLOTS FOR tiMjelm
+plot(combineddata9$mean_tiMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_tiMjelm)
+# Calculate the average individualCount per tiMjelm
+avgIndividualCounttiMjelm = combineddata9 %>%
+  group_by(mean_tiMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCounttiMjelm, aes(x = mean_tiMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("tiMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per tiMjelm")
+
+#PLOTS FOR zrMjelm
+plot(combineddata9$mean_zrMjelm,combineddata9$individualCount)
+combineddata9 %>% count(mean_zrMjelm)
+# Calculate the average individualCount per zrMjelm
+avgIndividualCountzrMjelm = combineddata9 %>%
+  group_by(mean_zrMjelm) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountzrMjelm, aes(x = mean_zrMjelm, y = avgCount)) +
+  geom_point() +
+  xlab("zrMjelm") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per zrMjelm")
+
+#PLOTS FOR phCacl2
+plot(combineddata9$mean_phCacl2,combineddata9$individualCount)
+combineddata9 %>% count(mean_phCacl2)
+# Calculate the average individualCount per zrMjelm
+avgIndividualCountphCacl2 = combineddata9 %>%
+  group_by(mean_phCacl2) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountphCacl2, aes(x = mean_phCacl2, y = avgCount)) +
+  geom_point() +
+  xlab("phCacl2") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per phCacl2")
+
+#PLOTS FOR phH2o
+plot(combineddata9$mean_phH2o,combineddata9$individualCount)
+combineddata9 %>% count(mean_phH2o)
+# Calculate the average individualCount per phH2o
+avgIndividualCountphH2o = combineddata9 %>%
+  group_by(mean_phH2o) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountphH2o, aes(x = mean_phH2o, y = avgCount)) +
+  geom_point() +
+  xlab("phH2o") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per phH2o")
+
+#PLOTS FOR ec12pre
+plot(combineddata9$mean_ec12pre,combineddata9$individualCount)
+combineddata9 %>% count(mean_ec12pre)
+# Calculate the average individualCount per ec12pre
+avgIndividualCountec12pre = combineddata9 %>%
+  group_by(mean_ec12pre) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountec12pre, aes(x = mean_ec12pre, y = avgCount)) +
+  geom_point() +
+  xlab("ec12pre") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per ec12pre")
+
+#PLOTS FOR gypsumConc
+plot(combineddata9$mean_gypsumConc,combineddata9$individualCount)
+combineddata9 %>% count(mean_gypsumConc)
+# Calculate the average individualCount per gypsumConc
+avgIndividualCountgypsumConc = combineddata9 %>%
+  group_by(mean_gypsumConc) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountgypsumConc, aes(x = mean_gypsumConc, y = avgCount)) +
+  geom_point() +
+  xlab("gypsumConc") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per gypsumConc")
+
+#PLOTS FOR caco3Conc
+plot(combineddata9$mean_caco3Conc,combineddata9$individualCount)
+combineddata9 %>% count(mean_caco3Conc)
+# Calculate the average individualCount per caco3Conc
+avgIndividualCountcaco3Conc = combineddata9 %>%
+  group_by(mean_caco3Conc) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcaco3Conc, aes(x = mean_caco3Conc, y = avgCount)) +
+  geom_point() +
+  xlab("caco3Conc") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per caco3Conc")
+
+#PLOTS FOR caNh4d
+plot(combineddata9$mean_caNh4d,combineddata9$individualCount)
+combineddata9 %>% count(mean_caNh4d)
+# Calculate the average individualCount per caNh4d
+avgIndividualCountcaNh4d = combineddata9 %>%
+  group_by(mean_caNh4d) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcaNh4d, aes(x = mean_caNh4d, y = avgCount)) +
+  geom_point() +
+  xlab("caNh4d") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per caNh4d")
+
+#PLOTS FOR kNh4d
+plot(combineddata9$mean_kNh4d,combineddata9$individualCount)
+combineddata9 %>% count(mean_kNh4d)
+# Calculate the average individualCount per kNh4d
+avgIndividualCountkNh4d = combineddata9 %>%
+  group_by(mean_kNh4d) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountkNh4d, aes(x = mean_kNh4d, y = avgCount)) +
+  geom_point() +
+  xlab("kNh4d") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per kNh4d")
+
+#PLOTS FOR mgNh4d
+plot(combineddata9$mean_mgNh4d,combineddata9$individualCount)
+combineddata9 %>% count(mean_mgNh4d)
+# Calculate the average individualCount per mgNh4d
+avgIndividualCountmgNh4d = combineddata9 %>%
+  group_by(mean_mgNh4d) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountmgNh4d, aes(x = mean_mgNh4d, y = avgCount)) +
+  geom_point() +
+  xlab("mgNh4d") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per mgNh4d")
+
+#PLOTS FOR naNh4d
+plot(combineddata9$mean_naNh4d,combineddata9$individualCount)
+combineddata9 %>% count(mean_naNh4d)
+# Calculate the average individualCount per naNh4d
+avgIndividualCountnaNh4d = combineddata9 %>%
+  group_by(mean_naNh4d) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountnaNh4d, aes(x = mean_naNh4d, y = avgCount)) +
+  geom_point() +
+  xlab("naNh4d") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per naNh4d")
+
+#PLOTS FOR cecdNh4
+plot(combineddata9$mean_cecdNh4,combineddata9$individualCount)
+combineddata9 %>% count(mean_cecdNh4)
+# Calculate the average individualCount per cecdNh4
+avgIndividualCountcecdNh4 = combineddata9 %>%
+  group_by(mean_cecdNh4) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcecdNh4, aes(x = mean_cecdNh4, y = avgCount)) +
+  geom_point() +
+  xlab("cecdNh4") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per cecdNh4")
+
+#PLOTS FOR alSatCecd33
+plot(combineddata9$mean_alSatCecd33,combineddata9$individualCount)
+combineddata9 %>% count(mean_alSatCecd33)
+# Calculate the average individualCount per alSatCecd33
+avgIndividualCountalSatCecd33 = combineddata9 %>%
+  group_by(mean_alSatCecd33) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountalSatCecd33, aes(x = mean_alSatCecd33, y = avgCount)) +
+  geom_point() +
+  xlab("alSatCecd33") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per alSatCecd33")
+
+#PLOTS FOR baseSumCecd10
+plot(combineddata9$mean_baseSumCecd10,combineddata9$individualCount)
+combineddata9 %>% count(mean_baseSumCecd10)
+# Calculate the average individualCount per baseSumCecd10
+avgIndividualCountbaseSumCecd10 = combineddata9 %>%
+  group_by(mean_baseSumCecd10) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountbaseSumCecd10, aes(x = mean_baseSumCecd10, y = avgCount)) +
+  geom_point() +
+  xlab("baseSumCecd10") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per baseSumCecd10")
+
+#PLOTS FOR bsesatCecd10
+plot(combineddata9$mean_bsesatCecd10,combineddata9$individualCount)
+combineddata9 %>% count(mean_bsesatCecd10)
+# Calculate the average individualCount per bsesatCecd10
+avgIndividualCountbsesatCecd10 = combineddata9 %>%
+  group_by(mean_bsesatCecd10) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountbsesatCecd10, aes(x = mean_bsesatCecd10, y = avgCount)) +
+  geom_point() +
+  xlab("bsesatCecd10") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per bsesatCecd10")
+
+#PLOTS FOR ececCecd33
+plot(combineddata9$mean_ececCecd33,combineddata9$individualCount)
+combineddata9 %>% count(mean_ececCecd33)
+# Calculate the average individualCount per ececCecd33
+avgIndividualCountececCecd33 = combineddata9 %>%
+  group_by(mean_ececCecd33) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountececCecd33, aes(x = mean_ececCecd33, y = avgCount)) +
+  geom_point() +
+  xlab("ececCecd33") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per ececCecd33")
+
+#PLOTS FOR alKcl
+plot(combineddata9$mean_alKcl,combineddata9$individualCount)
+combineddata9 %>% count(mean_alKcl)
+# Calculate the average individualCount per alKcl
+avgIndividualCountalKcl = combineddata9 %>%
+  group_by(mean_alKcl) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountalKcl, aes(x = mean_alKcl, y = avgCount)) +
+  geom_point() +
+  xlab("alKcl") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per alKcl")
+
+#PLOTS FOR feKcl, #CAN REMOVE, ONLY EMPTY VALUES
+plot(combineddata9$mean_feKcl,combineddata9$individualCount)
+combineddata9 %>% count(mean_feKcl)
+# Calculate the average individualCount per feKcl
+avgIndividualCountfeKcl = combineddata9 %>%
+  group_by(mean_feKcl) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountfeKcl, aes(x = mean_feKcl, y = avgCount)) +
+  geom_point() +
+  xlab("feKcl") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per feKcl")
+
+#PLOTS FOR mnKcl
+plot(combineddata9$mean_mnKcl,combineddata9$individualCount)
+combineddata9 %>% count(mean_mnKcl)
+# Calculate the average individualCount per mnKcl
+avgIndividualCountmnKcl = combineddata9 %>%
+  group_by(mean_mnKcl) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountmnKcl, aes(x = mean_mnKcl, y = avgCount)) +
+  geom_point() +
+  xlab("mnKcl") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per mnKcl")
+
+#PLOTS FOR bSatx, CAN REMOVE ONLY EMPTY VALUES
+plot(combineddata9$mean_bSatx,combineddata9$individualCount)
+combineddata9 %>% count(mean_bSatx)
+# Calculate the average individualCount per bSatx
+avgIndividualCountbSatx = combineddata9 %>%
+  group_by(mean_bSatx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountbSatx, aes(x = mean_bSatx, y = avgCount)) +
+  geom_point() +
+  xlab("bSatx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per bSatx")
+
+#PLOTS FOR brSatx
+plot(combineddata9$mean_brSatx,combineddata9$individualCount)
+combineddata9 %>% count(mean_brSatx)
+# Calculate the average individualCount per brSatx
+avgIndividualCountbrSatx = combineddata9 %>%
+  group_by(mean_brSatx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountbrSatx, aes(x = mean_brSatx, y = avgCount)) +
+  geom_point() +
+  xlab("brSatx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per brSatx")
+
+#PLOTS FOR caSatx
+plot(combineddata9$mean_caSatx,combineddata9$individualCount)
+combineddata9 %>% count(mean_caSatx)
+# Calculate the average individualCount per caSatx
+avgIndividualCountcaSatx = combineddata9 %>%
+  group_by(mean_caSatx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcaSatx, aes(x = mean_caSatx, y = avgCount)) +
+  geom_point() +
+  xlab("caSatx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per caSatx")
+
+#PLOTS FOR clSatx
+plot(combineddata9$mean_clSatx,combineddata9$individualCount)
+combineddata9 %>% count(mean_clSatx)
+# Calculate the average individualCount per clSatx
+avgIndividualCountclSatx = combineddata9 %>%
+  group_by(mean_clSatx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountclSatx, aes(x = mean_clSatx, y = avgCount)) +
+  geom_point() +
+  xlab("clSatx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per clSatx")
+
+#PLOTS FOR co3Satx, ONLY ONE VALUE FOR OVER 7k entries
+plot(combineddata9$mean_co3Satx,combineddata9$individualCount)
+combineddata9 %>% count(mean_co3Satx)
+# Calculate the average individualCount per co3Satx
+avgIndividualCountco3Satx = combineddata9 %>%
+  group_by(mean_co3Satx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountco3Satx, aes(x = mean_co3Satx, y = avgCount)) +
+  geom_point() +
+  xlab("co3Satx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per co3Satx")
+
+#PLOTS FOR ecSatp
+plot(combineddata9$mean_ecSatp,combineddata9$individualCount)
+combineddata9 %>% count(mean_ecSatp)
+# Calculate the average individualCount per ecSatp
+avgIndividualCountecSatp = combineddata9 %>%
+  group_by(mean_ecSatp) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountecSatp, aes(x = mean_ecSatp, y = avgCount)) +
+  geom_point() +
+  xlab("ecSatp") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per ecSatp")
+
+#PLOTS FOR flSatx
+plot(combineddata9$mean_flSatx,combineddata9$individualCount)
+combineddata9 %>% count(mean_flSatx)
+# Calculate the average individualCount per flSatx
+avgIndividualCountflSatx = combineddata9 %>%
+  group_by(mean_flSatx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountflSatx, aes(x = mean_flSatx, y = avgCount)) +
+  geom_point() +
+  xlab("flSatx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per flSatx")
+
+#PLOTS FOR waterSatx
+plot(combineddata9$mean_waterSatx,combineddata9$individualCount)
+combineddata9 %>% count(mean_waterSatx)
+# Calculate the average individualCount per waterSatx
+avgIndividualCountwaterSatx = combineddata9 %>%
+  group_by(mean_waterSatx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountwaterSatx, aes(x = mean_waterSatx, y = avgCount)) +
+  geom_point() +
+  xlab("waterSatx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per waterSatx")
+
+#PLOTS FOR hco3Sx
+plot(combineddata9$mean_hco3Sx,combineddata9$individualCount)
+combineddata9 %>% count(mean_hco3Sx)
+# Calculate the average individualCount per hco3Sx
+avgIndividualCounthco3Sx = combineddata9 %>%
+  group_by(mean_hco3Sx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCounthco3Sx, aes(x = mean_hco3Sx, y = avgCount)) +
+  geom_point() +
+  xlab("hco3Sx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per hco3Sx")
+
+#PLOTS FOR kSatx
+plot(combineddata9$mean_kSatx,combineddata9$individualCount)
+combineddata9 %>% count(mean_kSatx)
+# Calculate the average individualCount per kSatx
+avgIndividualCountkSatx = combineddata9 %>%
+  group_by(mean_kSatx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountkSatx, aes(x = mean_kSatx, y = avgCount)) +
+  geom_point() +
+  xlab("kSatx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per kSatx")
+
+#PLOTS FOR mgSatx
+plot(combineddata9$mean_mgSatx,combineddata9$individualCount)
+combineddata9 %>% count(mean_mgSatx)
+# Calculate the average individualCount per mgSatx
+avgIndividualCountmgSatx = combineddata9 %>%
+  group_by(mean_mgSatx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountmgSatx, aes(x = mean_mgSatx, y = avgCount)) +
+  geom_point() +
+  xlab("mgSatx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per mgSatx")
+
+#PLOTS FOR naSatx
+plot(combineddata9$mean_naSatx,combineddata9$individualCount)
+combineddata9 %>% count(mean_naSatx)
+# Calculate the average individualCount per naSatx
+avgIndividualCountnaSatx = combineddata9 %>%
+  group_by(mean_naSatx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountnaSatx, aes(x = mean_naSatx, y = avgCount)) +
+  geom_point() +
+  xlab("naSatx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per naSatx")
+
+#PLOTS FOR no2Satx
+plot(combineddata9$mean_no2Satx,combineddata9$individualCount)
+combineddata9 %>% count(mean_no2Satx)
+# Calculate the average individualCount per no2Satx
+avgIndividualCountno2Satx = combineddata9 %>%
+  group_by(mean_no2Satx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountno2Satx, aes(x = mean_no2Satx, y = avgCount)) +
+  geom_point() +
+  xlab("no2Satx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per no2Satx")
+
+#PLOTS FOR no3Satx
+plot(combineddata9$mean_no3Satx,combineddata9$individualCount)
+combineddata9 %>% count(mean_no3Satx)
+# Calculate the average individualCount per no3Satx
+avgIndividualCountno3Satx = combineddata9 %>%
+  group_by(mean_no3Satx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountno3Satx, aes(x = mean_no3Satx, y = avgCount)) +
+  geom_point() +
+  xlab("no3Satx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per no3Satx")
+
+#PLOTS FOR pSatx
+plot(combineddata9$mean_pSatx,combineddata9$individualCount)
+combineddata9 %>% count(mean_pSatx)
+# Calculate the average individualCount per pSatx
+avgIndividualCountpSatx = combineddata9 %>%
+  group_by(mean_pSatx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountpSatx, aes(x = mean_pSatx, y = avgCount)) +
+  geom_point() +
+  xlab("pSatx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per pSatx")
+
+#PLOTS FOR phSp, MIGHT BE A GOOD ONE FOR A POSITIVE RELATIONSHIP
+plot(combineddata9$mean_phSp,combineddata9$individualCount)
+combineddata9 %>% count(mean_phSp)
+# Calculate the average individualCount per phSp
+avgIndividualCountphSp = combineddata9 %>%
+  group_by(mean_phSp) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountphSp, aes(x = mean_phSp, y = avgCount)) +
+  geom_point() +
+  xlab("phSp") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per phSp")
+
+#PLOTS FOR resist, CAN REMOVE, ONLY NA
+plot(combineddata9$mean_resist,combineddata9$individualCount)
+combineddata9 %>% count(mean_resist)
+# Calculate the average individualCount per resist
+avgIndividualCountresist = combineddata9 %>%
+  group_by(mean_resist) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountresist, aes(x = mean_resist, y = avgCount)) +
+  geom_point() +
+  xlab("resist") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per resist")
+
+#PLOTS FOR so4Satx
+plot(combineddata9$mean_so4Satx,combineddata9$individualCount)
+combineddata9 %>% count(mean_so4Satx)
+# Calculate the average individualCount per so4Satx
+avgIndividualCountso4Satx = combineddata9 %>%
+  group_by(mean_so4Satx) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountso4Satx, aes(x = mean_so4Satx, y = avgCount)) +
+  geom_point() +
+  xlab("so4Satx") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per so4Satx")
+
+#PLOTS FOR diameter
+plot(combineddata9$mean_diameter,combineddata9$individualCount)
+combineddata9 %>% count(mean_diameter)
+# Calculate the average individualCount per diameter
+avgIndividualCountdiameter = combineddata9 %>%
+  group_by(mean_diameter) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountdiameter, aes(x = mean_diameter, y = avgCount)) +
+  geom_point() +
+  xlab("diameter") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per diameter")
+
+#PLOTS FOR ninetyDiameter
+plot(combineddata9$mean_ninetyDiameter,combineddata9$individualCount)
+combineddata9 %>% count(mean_ninetyDiameter)
+# Calculate the average individualCount per ninetyDiameter
+avgIndividualCountninetyDiameter = combineddata9 %>%
+  group_by(mean_ninetyDiameter) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountninetyDiameter, aes(x = mean_ninetyDiameter, y = avgCount)) +
+  geom_point() +
+  xlab("Ninety Diameter") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per ninety Diameter")
+
+#PLOTS FOR maxDiskHeight, MIGHT BE GOOD FOR POSITIVE ASSOCIATION
+plot(combineddata9$mean_maxDiskHeight,combineddata9$individualCount)
+combineddata9 %>% count(mean_maxDiskHeight)
+# Calculate the average individualCount per maxDiskHeight
+avgIndividualCountmaxDiskHeight = combineddata9 %>%
+  group_by(mean_maxDiskHeight) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountmaxDiskHeight, aes(x = mean_maxDiskHeight, y = avgCount)) +
+  geom_point() +
+  xlab("Max Disk Height") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per max Disk Height")
+
+#PLOTS FOR minDiskHeight
+plot(combineddata9$mean_minDiskHeight,combineddata9$individualCount)
+combineddata9 %>% count(mean_minDiskHeight)
+# Calculate the average individualCount per minDiskHeight
+avgIndividualCountminDiskHeight = combineddata9 %>%
+  group_by(mean_minDiskHeight) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountminDiskHeight, aes(x = mean_minDiskHeight, y = avgCount)) +
+  geom_point() +
+  xlab("Min Disk Height") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per min Disk Height")
+
+#PLOTS FOR aDiskHeight
+plot(combineddata9$mean_aDiskHieght,combineddata9$individualCount)
+combineddata9 %>% count(mean_aDiskHieght)
+# Calculate the average individualCount per aDiskHieght
+avgIndividualCountaDiskHieght = combineddata9 %>%
+  group_by(mean_aDiskHieght) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountaDiskHieght, aes(x = mean_aDiskHieght, y = avgCount)) +
+  geom_point() +
+  xlab("a Disk Hieght") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per a Disk Hieght")
+
+#PLOTS FOR bDiskHeight
+plot(combineddata9$mean_bDiskHeight,combineddata9$individualCount)
+combineddata9 %>% count(mean_bDiskHeight)
+# Calculate the average individualCount per bDiskHeight
+avgIndividualCountbDiskHeight = combineddata9 %>%
+  group_by(mean_bDiskHeight) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountbDiskHeight, aes(x = mean_bDiskHeight, y = avgCount)) +
+  geom_point() +
+  xlab("b Disk Height") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per b Disk Height")
+
+#PLOTS FOR bulkDensDisk, POSSIBLE NON LINEAR RELATIONSHIP
+plot(combineddata9$mean_bulkDensDisk,combineddata9$individualCount)
+combineddata9 %>% count(mean_bulkDensDisk)
+# Calculate the average individualCount per bulkDensDisk
+avgIndividualCountbulkDensDisk = combineddata9 %>%
+  group_by(mean_bulkDensDisk) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountbulkDensDisk, aes(x = mean_bulkDensDisk, y = avgCount)) +
+  geom_point() +
+  xlab("bulk Density Disk") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per bulk Density Disk")
+
+#PLOTS FOR slopeAspect
+plot(combineddata9$mean_slopeAspect,combineddata9$individualCount)
+combineddata9 %>% count(mean_slopeAspect)
+# Calculate the average individualCount per slopeAspect
+avgIndividualCountslopeAspect = combineddata9 %>%
+  group_by(mean_slopeAspect) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountslopeAspect, aes(x = mean_slopeAspect, y = avgCount)) +
+  geom_point() +
+  xlab("slope Aspect") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per slope Aspect")
+
+#PLOTS FOR slopeGradient
+plot(combineddata9$mean_slopeGradient,combineddata9$individualCount)
+combineddata9 %>% count(mean_slopeGradient)
+# Calculate the average individualCount per slopeGradient
+avgIndividualCountslopeGradient = combineddata9 %>%
+  group_by(mean_slopeGradient) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountslopeGradient, aes(x = mean_slopeGradient, y = avgCount)) +
+  geom_point() +
+  xlab("slope Gradient") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per slope Gradient")
+
+#PLOTS FOR understoryHeight
+plot(combineddata9$mean_understoryHeight,combineddata9$individualCount)
+combineddata9 %>% count(mean_understoryHeight)
+# Calculate the average individualCount per understoryHeight
+avgIndividualCountunderstoryHeight = combineddata9 %>%
+  group_by(mean_understoryHeight) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountunderstoryHeight, aes(x = mean_understoryHeight, y = avgCount)) +
+  geom_point() +
+  xlab("understory Height") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per understory Height")
+
+#PLOTS FOR overstoryHeight
+plot(combineddata9$mean_overstoryHeight,combineddata9$individualCount)
+combineddata9 %>% count(mean_overstoryHeight)
+# Calculate the average individualCount per overstoryHeight
+avgIndividualCountoverstoryHeight = combineddata9 %>%
+  group_by(mean_overstoryHeight) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountoverstoryHeight, aes(x = mean_overstoryHeight, y = avgCount)) +
+  geom_point() +
+  xlab("overstory Height") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per overstory Height")
+
+#PLOTS FOR d15N, CAN REMOVE, ONLY NA
+plot(combineddata9$mean_d15N,combineddata9$individualCount)
+combineddata9 %>% count(mean_d15N)
+# Calculate the average individualCount per d15N
+avgIndividualCountd15N = combineddata9 %>%
+  group_by(mean_d15N) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountd15N, aes(x = mean_d15N, y = avgCount)) +
+  geom_point() +
+  xlab("d15N") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per d15N")
+
+#PLOTS FOR d13C, CAN REMOVE, ONLY NA
+plot(combineddata9$mean_d13C,combineddata9$individualCount)
+combineddata9 %>% count(mean_d13C)
+# Calculate the average individualCount per d13C
+avgIndividualCountd13C = combineddata9 %>%
+  group_by(mean_d13C) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountd13C, aes(x = mean_d13C, y = avgCount)) +
+  geom_point() +
+  xlab("d13C") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per d13C")
+
+#PLOTS FOR nitrogenPercent, CAN REMOVE, ONLY NA
+plot(combineddata9$mean_nitrogenPercent,combineddata9$individualCount)
+combineddata9 %>% count(mean_nitrogenPercent)
+# Calculate the average individualCount per nitrogenPercent
+avgIndividualCountnitrogenPercent = combineddata9 %>%
+  group_by(mean_nitrogenPercent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountnitrogenPercent, aes(x = mean_nitrogenPercent, y = avgCount)) +
+  geom_point() +
+  xlab("nitrogen Percent") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per nitrogen Percent")
+
+#PLOTS FOR carbonPercent, CAN REMOVE
+plot(combineddata9$mean_carbonPercent,combineddata9$individualCount)
+combineddata9 %>% count(mean_carbonPercent)
+# Calculate the average individualCount per carbonPercent
+avgIndividualCountcarbonPercent = combineddata9 %>%
+  group_by(mean_carbonPercent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcarbonPercent, aes(x = mean_carbonPercent, y = avgCount)) +
+  geom_point() +
+  xlab("carbon Percent") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per carbon Percent")
+
+#PLOTS FOR ligninPercent, CAN REMOVE
+plot(combineddata9$mean_ligninPercent,combineddata9$individualCount)
+combineddata9 %>% count(mean_ligninPercent)
+# Calculate the average individualCount per ligninPercent
+avgIndividualCountligninPercent = combineddata9 %>%
+  group_by(mean_ligninPercent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountligninPercent, aes(x = mean_ligninPercent, y = avgCount)) +
+  geom_point() +
+  xlab("lignin Percent") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per lignin Percent")
+
+#PLOTS FOR cellulosePercent, CAN REMOVE
+plot(combineddata9$mean_cellulosePercent,combineddata9$individualCount)
+combineddata9 %>% count(mean_cellulosePercent)
+# Calculate the average individualCount per cellulosePercent
+avgIndividualCountcellulosePercent = combineddata9 %>%
+  group_by(mean_cellulosePercent) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcellulosePercent, aes(x = mean_cellulosePercent, y = avgCount)) +
+  geom_point() +
+  xlab("cellulose Percent") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per cellulose Percent")
+
+#PLOTS FOR NDVI
+plot(combineddata9$NDVI,combineddata9$individualCount)
+combineddata9 %>% count(NDVI)
+# Calculate the average individualCount per NDVI
+avgIndividualCountNDVI = combineddata9 %>%
+  group_by(NDVI) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountNDVI, aes(x = NDVI, y = avgCount)) +
+  geom_point() +
+  xlab("NDVI") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per NDVI")
+
+#PLOTS FOR countMammal
+plot(combineddata9$countMammal,combineddata9$individualCount)
+combineddata9 %>% count(countMammal)
+# Calculate the average individualCount per NDVI
+avgIndividualCountcountMammal = combineddata9 %>%
+  group_by(countMammal) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcountMammal, aes(x = countMammal, y = avgCount)) +
+  geom_point() +
+  xlab("count Mammal") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per count Mammal")
+
+#PLOTS FOR countMammalSite
+plot(combineddata9$countMammalSite,combineddata9$individualCount)
+combineddata9 %>% count(countMammalSite)
+# Calculate the average individualCount per NDVI
+avgIndividualCountcountMammalSite = combineddata9 %>%
+  group_by(countMammalSite) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcountMammalSite, aes(x = countMammalSite, y = avgCount)) +
+  geom_point() +
+  xlab("count Mammal Site") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per count Mammal Site")
+
+#PLOTS FOR countBird
+plot(combineddata9$countBird,combineddata9$individualCount)
+combineddata9 %>% count(countBird)
+# Calculate the average individualCount per Bird
+avgIndividualCountcountBird = combineddata9 %>%
+  group_by(countBird) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcountBird, aes(x = countBird, y = avgCount)) +
+  geom_point() +
+  xlab("count Bird") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per count Bird")
+
+#PLOTS FOR countBirdSite
+plot(combineddata9$countBirdSite,combineddata9$individualCount)
+combineddata9 %>% count(countBirdSite)
+# Calculate the average individualCount per BirdSite
+avgIndividualCountcountBirdSite = combineddata9 %>%
+  group_by(countBirdSite) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountcountBirdSite, aes(x = countBirdSite, y = avgCount)) +
+  geom_point() +
+  xlab("count Bird Site") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per count Bird Site")
+
+#*REMOVED VARIABLES####
+combineddata9$mean_clayFineContent <- NULL
+combineddata9$mean_gypsumConc <- NULL
+combineddata9$mean_caco3Conc <- NULL
+combineddata9$mean_feKcl <- NULL
+combineddata9$mean_bSatx <- NULL
+combineddata9$mean_brSatx <- NULL
+combineddata9$mean_caSatx <- NULL
+combineddata9$mean_clSatx <- NULL
+combineddata9$mean_co3Satx <- NULL
+combineddata9$mean_waterSatx <- NULL
+combineddata9$mean_hco3Sx <- NULL
+combineddata9$mean_kSatx <- NULL
+combineddata9$mean_mgSatx <- NULL
+combineddata9$mean_naSatx <- NULL
+combineddata9$mean_no2Satx <- NULL
+combineddata9$mean_no3Satx <- NULL
+combineddata9$mean_pSatx <- NULL
+combineddata9$mean_resist <- NULL
+combineddata9$mean_so4Satx <- NULL
+combineddata9$mean_aDiskHieght <- NULL
+combineddata9$mean_bDiskHeight <- NULL
+combineddata9$mean_d15N <- NULL
+combineddata9$mean_d13C <- NULL
+combineddata9$mean_nitrogenPercent <- NULL
+combineddata9$mean_carbonPercent <- NULL
+combineddata9$mean_ligninPercent <- NULL
+combineddata9$mean_cellulosePercent <- NULL
