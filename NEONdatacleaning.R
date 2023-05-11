@@ -512,9 +512,14 @@ combineddata2$individualCount[is.na(combineddata2$individualCount)] <- 0
 
 
 #*SOIL DATA ####
+periodicsoildata <- loadByProduct(dpID = 'DP1.10086.001')
 soildata <- loadByProduct(dpID = 'DP1.00096.001')
 #View(soildata)
 #separate tables of interest:
+soilChemistry <- periodicsoildata$sls_soilChemistry
+soilCore <- periodicsoildata$sls_soilCoreCollection
+soilMoisture <- periodicsoildata$sls_soilMoisture
+soilpH <- periodicsoildata$sls_soilpH
 perbiogeo <- soildata$mgp_perbiogeosample
 perbulk <- soildata$mgp_perbulksample
 perhorizon <- soildata$mgp_perhorizon
@@ -524,7 +529,15 @@ megapit <- soildata$mgp_permegapit
 combineddata3 <- combineddata2
 combineddata3$plotID1 = substr(combineddata2$plotID,1,nchar(combineddata2$plotID)-4)
 
-#remove unneeded columns
+#remove/subset unneeded/needed columns
+soilChemistry <- subset(soilChemistry, select=c(siteID,collectDate,d15N,organicd13C,nitrogenPercent,organicCPercent,CNratio))
+
+soilCore <- subset(soilCore, select=c(siteID,collectDate,soilTemp,litterDepth))
+  
+soilMoisture <- subset(soilMoisture, select=c(siteID,collectDate,soilMoisture))
+
+soilpH <- subset(soilpH, select=c(siteID,collectDate,soilInWaterpH,soilInCaClpH))
+
 perbiogeo <- subset(perbiogeo, select=-c(uid,domainID,pitNamedLocation,pitID,horizonID,biogeoID,horizonName,biogeoHorizonProportion,
                                          biogeoSampleType,setDate,laboratoryName,labProjID,biogeoTopDepth,biogeoCenterDepth,biogeoBottomDepth,remarks,
                                          publicationDate,release))
@@ -547,6 +560,51 @@ perbulk <- data.frame(perbulk)
 perhorizon <- data.frame(perhorizon)
 megapit <- data.frame(megapit)
 
+#format dates (remove HMS)
+soilChemistry$collectDate <- ymd_hms(soilChemistry$collectDate)
+soilCore$collectDate <- ymd_hms(soilCore$collectDate)
+soilMoisture$collectDate <- ymd_hms(soilMoisture$collectDate)
+soilpH$collectDate <- ymd_hms(soilpH$collectDate)
+
+soilChemistry <- soilChemistry %>% mutate(collectDate = as_date(collectDate))
+soilCore <- soilCore %>% mutate(collectDate = as_date(collectDate))
+soilMoisture <- soilMoisture %>% mutate(collectDate = as_date(collectDate))
+soilpH <- soilpH %>% mutate(collectDate = as_date(collectDate))
+
+soilChemistry$collectDate <- ymd(soilChemistry$collectDate)
+soilMoisture$collectDate <- ymd(soilMoisture$collectDate)
+soilCore$collectDate <- ymd(soilCore$collectDate)
+#merge based on nearest date:
+combineddata10 <- lapply(intersect(combineddata9$plotID1,soilMoisture$siteID),function(id) {
+  d1 <- subset(combineddata9,plotID1==id)
+  d2 <- subset(soilMoisture,siteID==id)
+  
+  d1$indices <- sapply(d1$collectDate,function(d) which.min(abs(d2$collectDate - d)))
+  d2$indices <- 1:nrow(d2)
+  
+  merge(d1,d2,by.x=c('plotID1','indices'),by.y=c('siteID','indices'),all.x = T)
+})
+
+combineddata10 <- do.call(rbind,combineddata10)
+combineddata10$indices <- NULL
+
+combineddata10$collectDate <- ymd(combineddata10$collectDate.x)
+combineddata10$collectDate.x <- NULL
+
+colnames(combineddata10)[95] <- "nearestDateMoisture"
+combineddata10 <- data.frame(combineddata10)
+combineddata11 <- lapply(intersect(combineddata10$plotID1,soilCore$siteID),function(id) {
+  d1 <- subset(combineddata10,plotID1==id)
+  d2 <- subset(soilCore,siteID==id)
+  
+  d1$indices <- sapply(d1$collectDate,function(d) which.min(abs(d2$collectDate - d)))
+  d2$indices <- 1:nrow(d2)
+  
+  merge(d1,d2,by.x=c('plotID1','indices'),by.y=c('siteID','indices'),all.x = T)
+})
+
+combineddata11 <- do.call(rbind,combineddata10)
+combineddata11$indices <- NULL
 #We need to average the values for perbiogeo, perbulk, and perhorizon:
 #Works, but cant ignore NAs
 # perbiogeo%>%group_by(siteID)%>%summarise_at(vars("coarseFrag2To5","coarseFrag5To20","sandTotal","siltTotal","clayTotal","carbonateClay",
@@ -597,6 +655,7 @@ perhorizon <- perhorizon %>% group_by(siteID) %>%
   summarise(mean_horizonTopDepth=mean(horizonTopDepth,na.rm = T),mean_horizonBottomDepth=mean(horizonBottomDepth,na.rm = T),
             .groups = 'drop') %>%
   as.data.frame()
+
 #combine with the dataset
 combineddata3 <- merge(combineddata3,perbiogeo, by.x = 'plotID1', by.y = 'siteID',all.x = T)
 combineddata3 <- merge(combineddata3,perbulk, by.x = 'plotID1', by.y = 'siteID',all.x = T)
@@ -2335,6 +2394,34 @@ ggplot(avgIndividualCountcountBirdSite, aes(x = countBirdSite, y = avgCount)) +
   xlab("count Bird Site") +
   ylab("Average Individual Count") +
   ggtitle("Average Individual Count per count Bird Site")
+
+#PLOTS FOR ovendry
+plot(combineddata10$perbiogeo.mean_airDryOvenDry,combineddata10$individualCount)
+combineddata10 %>% count(perbiogeo.mean_airDryOvenDry)
+# Calculate the average individualCount per perbiogeo.mean_airDryOvenDry
+avgIndividualCountperbiogeo.mean_airDryOvenDry = combineddata10 %>%
+  group_by(perbiogeo.mean_airDryOvenDry) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountperbiogeo.mean_airDryOvenDry, aes(x = perbiogeo.mean_airDryOvenDry, y = avgCount)) +
+  geom_point() +
+  xlab("perbiogeo.mean_airDryOvenDry") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per perbiogeo.mean_airDryOvenDry")
+
+#PLOTS FOR soilMoisture
+plot(combineddata10$soilMoisture,combineddata10$individualCount)
+combineddata10 %>% count(soilMoisture)
+# Calculate the average individualCount per perbiogeo.mean_airDryOvenDry
+avgIndividualCountsoilMoisture = combineddata10 %>%
+  group_by(soilMoisture) %>%
+  summarize(avgCount = mean(individualCount))
+# Create a scatter plot
+ggplot(avgIndividualCountsoilMoisture, aes(x = soilMoisture, y = avgCount)) +
+  geom_point() +
+  xlab("soilMoisture") +
+  ylab("Average Individual Count") +
+  ggtitle("Average Individual Count per soilMoisture")
 
 #*REMOVED VARIABLES####
 combineddata9$mean_clayFineContent <- NULL
