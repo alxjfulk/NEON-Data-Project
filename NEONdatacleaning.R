@@ -2626,3 +2626,5 @@ combineddata9$mean_nitrogenPercent <- NULL
 combineddata9$mean_carbonPercent <- NULL
 combineddata9$mean_ligninPercent <- NULL
 combineddata9$mean_cellulosePercent <- NULL
+
+
