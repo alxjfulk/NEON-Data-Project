@@ -3,7 +3,6 @@
 library(geoNEON)
 library(neonUtilities)
 library(tidyverse)
-library(eSDM)
 library(sp)
 library(rgdal)
 library(rgeos)
@@ -120,8 +119,16 @@ rgdal::writeOGR(obj = polys.df,
 #                 overwrite_layer = TRUE)
 
 #USING THE SHAPEFILE FROM NEON BECAUSE NOTHING ELSE HAS WORKED
-tickshape <- readOGR("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/arcgis/tickPlot.shp")
-biggerpolys <- readOGR("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/arcgis/smallerpolys/biggerpolys.shp")
+tickshape <- readOGR("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/tick_plot_3000buffer/tickPlot.shp")
+biggerpolys <- readOGR("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/arcgis_tickplots/smallerpolys/biggerpolys.shp")
+
+RStmean_proj <- projectRaster(RStmean, crs = CRS("+proj=longlat +datum=WGS84 +no_defs"))
+temp_mask <- raster::mask(RStmean_proj,tickshape)
+RStmean_proj_res <- disaggregate(temp_mask[[1]], fact = 45)
+tick_temp_rast <- raster::mask(RStmean_proj_res,tickshape)
+plot(temp_mask[[1]])
+
+#writeRaster(temp_mask[[1]],filename = "C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/raster_test/rast1.tif")
 #checking to see which plots are missing from the shapefile
 check.plots <- split(seq_along(tickshape@data[["plotID"]]), factor(tickshape@data[["plotID"]], spatialData$plotID))
 #remove those that are missing
@@ -135,12 +142,10 @@ spatialData1 <- spatialData[ grep(remove.list, spatialData$plotID, invert = TRUE
 check.plots <- split(seq_along(tickshape@data[["plotID"]]), factor(tickshape@data[["plotID"]], spatialData1$plotID))
 #transforming the projection to that used in the PRISM data doesnt work
 #tickshape1 <- sp::spTransform(tickshape,CRS("+proj=longlat +datum=NAD83 +no_defs"))
-RStmean_proj <- projectRaster(RStmean, crs = CRS("+proj=longlat +datum=WGS84 +no_defs"))
 
 #let's try raising the resolution
-RStmean_proj_res <- raster::disaggregate(temp_mask, fact = 100)
 target_rast <- raster(extent(temp_mask), res = (res(temp_mask)/100) , crs = st_crs(temp_mask)$proj4string) 
-library(terra)
+
 RStmean_proj_res <- resample(temp_mask, target_rast, method = 'bilinear')
 tickshape$id <- "1"
 nwd <- gUnaryUnion(tickshape, id = NULL, checkValidity = NULL)
@@ -151,6 +156,10 @@ RStmean_proj_res[cell_na] <- NA
 
 plot(RStmean_proj[[1]])
 lines(nwd)
-temp_mask <- raster::mask(RStmean_proj,biggerpolys)
 plot(temp_mask[[1]])
 tick_mask <- rasterize(nwd,RStmean_proj[[1]], mask = T)
+colnames(tickshape@data)
+#rasterize, last attempt
+rast_tick <- rasterize(tickshape,temp_mask[[1]], field = colnames(tickshape@data))
+
+                               
