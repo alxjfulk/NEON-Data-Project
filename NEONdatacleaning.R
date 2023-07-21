@@ -429,8 +429,18 @@ colnames(sdf_trimmed)[4] <- "methodTypeChoiceFire"
 sdf_trimmed <- data.frame(sdf_trimmed)
 sdf_trimmed$locationIDFire <- gsub(" ", "", sdf_trimmed$locationIDFire, fixed = TRUE)
 write.csv(sdf_trimmed,"C:/Users/bigfo/OneDrive/Desktop/Research/NEON Data/Fire Data Cleaned/fire_cleaned.csv",row.names = FALSE)
+#NEW 07-20-23
+#order by site, then date
+combineddata13_ordered <- combineddata13[order(combineddata13$plotID,combineddata13$collectDate),]
 
+#add new fire data column for rpesence of fire in same year
+combineddata13_ordered$fire_within_same_year <- 0
 
+#move collectDate to front to make it easier to figure out which sites need values adjusted
+library(dplyr)
+combineddata13 <- combineddata13 %>% relocate(collectDate)
+#adjust 0 to 1 manually e.g.
+#combineddata13[c(4266,4267,4268), 111] <- 1
 
 #*TEMP, PRECIP, VPD, DEW TEMP DATA ----
 #for combining the downloaded data:

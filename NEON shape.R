@@ -121,7 +121,9 @@ rgdal::writeOGR(obj = polys.df,
 #USING THE SHAPEFILE FROM NEON BECAUSE NOTHING ELSE HAS WORKED
 tickshape <- readOGR("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/tick_plot_3000buffer/tickPlot.shp")
 biggerpolys <- readOGR("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/arcgis_tickplots/smallerpolys/biggerpolys.shp")
-
+test1 <- raster("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/raster_test/fire_2021.tif")
+par(bg = 'blue')
+plot(test1)
 RStmean_proj <- projectRaster(RStmean, crs = CRS("+proj=longlat +datum=WGS84 +no_defs"))
 temp_mask <- raster::mask(RStmean_proj,tickshape)
 RStmean_proj_res <- disaggregate(temp_mask[[1]], fact = 45)
@@ -160,6 +162,28 @@ plot(temp_mask[[1]])
 tick_mask <- rasterize(nwd,RStmean_proj[[1]], mask = T)
 colnames(tickshape@data)
 #rasterize, last attempt
-rast_tick <- rasterize(tickshape,temp_mask[[1]], field = colnames(tickshape@data))
-
+rast_tick <- rasterize(tickshape,temp_mask[[1]], field = "latitude")
+plot(rast_tick)
+#add vectors of zeros for each year, then we can replace those instances with fire that have them
+#See sdf_trimmed for fires. There are 68 instances total.
+tickshape@data$fire_pres_2013 <- rep(0,235)
+tickshape@data$fire_pres_2014 <- rep(0,235)
+tickshape@data$fire_pres_2015 <- rep(0,235)
+tickshape@data$fire_pres_2016 <- rep(0,235)
+tickshape@data$fire_pres_2017 <- rep(0,235)
+tickshape@data$fire_pres_2018 <- rep(0,235)
+tickshape@data$fire_pres_2019 <- rep(0,235)
+tickshape@data$fire_pres_2020 <- rep(0,235)
+tickshape@data$fire_pres_2021 <- rep(0,235)
+tickshape@data$fire_pres_2022 <- rep(0,235)
+tickshape@data$fire_pres_2023 <- rep(0,235)
                                
+#for 2013, there were three instances of fire at konz 1, 4, and 9
+tickshape@data$plotID
+tickshape@data$fire_pres_2013[[175]] <- 1
+tickshape@data$fire_pres_2013[[177]] <- 1
+tickshape@data$fire_pres_2013[[179]] <- 1
+
+rast_tick <- rasterize(tickshape,temp_mask[[1]], field = "fire_pres_2013", update = TRUE)
+plot(rast_tick)
+writeRaster(rast_tick,filename = "C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/raster_test/rast1.tif")

@@ -42,9 +42,9 @@ combineddata13 <- read.csv("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A A
 #removedNAcombineddata <- combineddata13[!is.na(combineddata13$NDVI) & !is.na(combineddata13$ppt) & !is.na(combineddata13$tmean) & !is.na(combineddata13$vpdmin) & !is.na(combineddata13$soilMoisture),]
 removedNAcombineddata <- combineddata13[!is.na(combineddata13$tdmean) & !is.na(combineddata13$ppt) & !is.na(combineddata13$tmean) & !is.na(combineddata13$vpdmin) & !is.na(combineddata13$tmax) & !is.na(combineddata13$tmin) & !is.na(combineddata13$vpdmax),]
 
-pres_obs <- removedNAcombineddata[removedNAcombineddata$individualCount > 0,]
+#pres_obs <- removedNAcombineddata[removedNAcombineddata$individualCount > 0,]
 
-pres_obs_rm <- distinct(pres_obs, collectDate, plotID, .keep_all = TRUE)
+#pres_obs_rm <- distinct(pres_obs, collectDate, plotID, .keep_all = TRUE)
 
 oneObsPerTimePerLoc <- distinct(removedNAcombineddata, collectDate, plotID, .keep_all = TRUE)
 #convert to presence/absence data
@@ -54,7 +54,7 @@ trainingsubset <- oneObsPerTimePerLoc %>% sample_n(nrow(oneObsPerTimePerLoc)/2)
 #take those observations not included in teh training subset for testing
 testingsubset <- anti_join(oneObsPerTimePerLoc,trainingsubset)
 
-glmModel <- glmulti(y = "pres_abs", xr = c("ppt","tmean","vpdmin","tmax","tdmean","vpdmax","tmin"), data = trainingsubset, crit = "aicc", method = "g",family = binomial(link = "logit"))
+glmModel4 <- glmulti(y = "pres_abs", xr = c("ppt","tmean","vpdmin","tmax","tdmean","vpdmax","tmin","daysSinceLastBurn"), data = trainingsubset, crit = "aicc", method = "g",family = binomial(link = "logit"), na.action = "na.pass")
  #family = binomial(link = "logit")
 consensusobj <- consensus(list(glmModel,glmModel1,glmModel2,glmModel3,glmModel4), confsetsize = 100)
 # print(glmModel)
@@ -84,11 +84,37 @@ modelsummary <- summary(consensusobj)
 #      lines = list(multiline = T),
 #      confint = list(style = "auto"))
 
-bestmodel1 <- glm(individualCount ~ 1 + ppt + tmean + vpdmin + vpdmax + tmin +
-                    vpdmin:ppt + tmax:vpdmin + tdmean:ppt + tdmean:tmax + vpdmax:tmean +
-                    tmin:ppt + tmin:tmean + tmin:vpdmin + tmin:tmax + tmin:tdmean, data = trainingsubset, family = binomial(link = "logit"))
+bestmodel1 <- glm(pres_abs ~ 1 + tmean + daysSinceLastBurn + tmax:tmean + 
+                    tdmean:vpdmin + vpdmax:vpdmin + tmin:vpdmin + daysSinceLastBurn:tmax + 
+                    daysSinceLastBurn:tdmean + daysSinceLastBurn:vpdmax, data = trainingsubset, family = binomial(link = "logit"))
 summary(bestmodel1)
 
+modelprediction <- predict(bestmodel1, newdata = testingsubset, type = "response")
+
+table_mat <- table(testingsubset$pres_abs, modelprediction > 0.5)
+
+accuracy_Test <- sum(diag(table_mat)) / sum(table_mat)
+accuracy_Test
+#precision is how often a prediction of 1 claimed
+precision <- function(matrix) {
+  # True positive
+  tp <- matrix[2, 2]
+  # false positive
+  fp <- matrix[1, 2]
+  return (tp / (tp + fp))
+}
+#recall is how often a prediction of 1 is correct
+recall <- function(matrix) {
+  # true positive
+  tp <- matrix[2, 2]# false positive
+  fn <- matrix[2, 1]
+  return (tp / (tp + fn))
+}
+
+prec <- precision(table_mat)
+prec
+rec <- recall(table_mat)
+rec
 prism_set_dl_dir("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/PRISM Data/monthly/MeanTemperature")
 #load raster data for a single year
 RStmean <- pd_stack(prism_archive_subset("tmean", temp_period = "monthly", years = c(2018), mon = c(1,2,3,4,5,6,7,8,9,10,11,12)))
@@ -137,7 +163,7 @@ names(RStdmean1) <- "tdmean"
 PRISMDataStack <- stack(RStmin1,RStmean1,RStmax1,RSvpdmin1,RSvpdmax1,RSppt1,RStdmean1)
 #names(PRISMDataStack)
 #PRISMDataStackDF <- data.frame(rasterToPoints(PRISMDataStack))
-modelprediction <- predict(PRISMDataStack, model = bestmodel1, progress = "window")
+# modelprediction <- predict(PRISMDataStack, model = bestmodel1, progress = "window")
 #dev.off()
 plot(modelprediction, maxpixels = 1000000, col = rainbow(15), main = "December 28th, 2018", zlim = c(-5,15))
 
