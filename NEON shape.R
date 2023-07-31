@@ -119,16 +119,29 @@ rgdal::writeOGR(obj = polys.df,
 #                 overwrite_layer = TRUE)
 
 #USING THE SHAPEFILE FROM NEON BECAUSE NOTHING ELSE HAS WORKED
-tickshape <- readOGR("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/tick_plot_3000buffer/tickPlot.shp")
-biggerpolys <- readOGR("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/arcgis_tickplots/smallerpolys/biggerpolys.shp")
-test1 <- raster("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/raster_test/fire_2021.tif")
+# tickshape <- readOGR("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/tick_plot_3000buffer/tickPlot.shp")
+tickshape <- readOGR("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/NEON site shapefile w R script/corrected_NEON_tickplots/NEONtickplots/PRISMNEONtickplots/NEONtickplots__FeatureEnvelo.shp")
+
+#biggerpolys <- readOGR("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/arcgis_tickplots/smallerpolys/biggerpolys.shp")
+firerast <- raster("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/fire_rasters/fire_2021.tif")
 par(bg = 'blue')
-plot(test1)
+plot(tickshape)
 RStmean_proj <- projectRaster(RStmean, crs = CRS("+proj=longlat +datum=WGS84 +no_defs"))
-temp_mask <- raster::mask(RStmean_proj,tickshape)
+temp_mask <- raster::mask(RStmean_proj,test1)
 RStmean_proj_res <- disaggregate(temp_mask[[1]], fact = 45)
 tick_temp_rast <- raster::mask(RStmean_proj_res,tickshape)
 plot(temp_mask[[1]])
+library(terra)
+#tickshape <- vect("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/NEON site shapefile w R script/corrected_NEON_tickplots/NEONtickplots/PRISMNEONtickplots/NEONtickplots__FeatureEnvelo.shp")
+firerast <- rast("C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/fire_rasters/fire_2021.tif")
+#add this to preserve names names = prism_archive_ls()
+RStmean <- rast(RStmean)
+
+tickshape <- project(tickshape, RStmean)
+plot(temp_mask[[1]])
+plot(tickshape, add = TRUE)
+temp_mask <- terra::mask(RStmean, tickshape)
+temp_mask <- terra::crop(RStmean_proj, firerast)
 
 #writeRaster(temp_mask[[1]],filename = "C:/Users/bigfo/OneDrive/Desktop/ENM Tutorial/ENM A Americanum NEON/TimeSpecific/raster_test/rast1.tif")
 #checking to see which plots are missing from the shapefile

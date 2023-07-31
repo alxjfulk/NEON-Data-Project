@@ -439,7 +439,7 @@ combineddata13_ordered$fire_within_same_year <- 0
 #move collectDate to front to make it easier to figure out which sites need values adjusted
 library(dplyr)
 combineddata13 <- combineddata13 %>% relocate(collectDate)
-#adjust 0 to 1 manually e.g.
+#adjust 0 to 1 manually e.g. CURRENTLY ON 2020
 #combineddata13[c(4266,4267,4268), 111] <- 1
 
 #*TEMP, PRECIP, VPD, DEW TEMP DATA ----
